@@ -29,6 +29,20 @@ const messagesExpiredCleanupTotal = new client.Counter({
   registers: [register],
 });
 
+const serviceHitsHandledTotal = new client.Counter({
+  name: 'service_hits_handled_total',
+  help: 'Total number of handled hits by service',
+  labelNames: ['service'],
+  registers: [register],
+});
+
+const serviceDependencyUp = new client.Gauge({
+  name: 'service_dependency_up',
+  help: 'Dependency status (1=up, 0=down)',
+  labelNames: ['service', 'dependency'],
+  registers: [register],
+});
+
 function normalizeRouteLabel(req) {
   if (req.route && typeof req.route.path === 'string') {
     const baseUrl = req.baseUrl || '';
@@ -71,6 +85,16 @@ function addExpiredCleanupCount(count) {
   }
 }
 
+function addHitsHandled(count = 1) {
+  if (count > 0) {
+    serviceHitsHandledTotal.inc({ service: 'api' }, count);
+  }
+}
+
+function setDependencyStatus(dependency, isUp) {
+  serviceDependencyUp.set({ service: 'api', dependency }, isUp ? 1 : 0);
+}
+
 async function metricsHandler(req, res) {
   res.set('Content-Type', register.contentType);
   res.send(await register.metrics());
@@ -85,5 +109,7 @@ module.exports = {
   metricsHandler,
   incrementMessagesCreated,
   addExpiredCleanupCount,
+  addHitsHandled,
+  setDependencyStatus,
   resetMetrics,
 };

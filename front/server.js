@@ -17,6 +17,92 @@ const htmlPath = path.join(__dirname, 'index.html');
 
 let totalHandled = 0;
 let pendingHandled = 0;
+let dependencyApiUp = 1;
+
+const histogramBuckets = [0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.5, 1, 2, 5];
+const requestCounters = new Map();
+const travailHistograms = new Map();
+
+function escapeLabelValue(value) {
+  return String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\n/g, '\\n')
+    .replace(/"/g, '\\"');
+}
+
+function labelsToString(labels) {
+  return Object.entries(labels)
+    .map(([key, value]) => `${key}="${escapeLabelValue(value)}"`)
+    .join(',');
+}
+
+function incrementRequestCount(method, route, status) {
+  const key = `${method}|${route}|${status}`;
+  requestCounters.set(key, (requestCounters.get(key) || 0) + 1);
+}
+
+function observeTravailHistogram(method, status, durationSeconds) {
+  const key = `${method}|${status}`;
+  let series = travailHistograms.get(key);
+
+  if (!series) {
+    series = {
+      bucketCounts: new Array(histogramBuckets.length).fill(0),
+      count: 0,
+      sum: 0,
+    };
+    travailHistograms.set(key, series);
+  }
+
+  let bucketIndex = histogramBuckets.length - 1;
+  for (let i = 0; i < histogramBuckets.length; i += 1) {
+    if (durationSeconds <= histogramBuckets[i]) {
+      bucketIndex = i;
+      break;
+    }
+  }
+
+  series.bucketCounts[bucketIndex] += 1;
+  series.count += 1;
+  series.sum += durationSeconds;
+}
+
+function renderMetrics() {
+  const lines = [];
+
+  lines.push('# HELP http_requests_total Total number of served HTTP requests');
+  lines.push('# TYPE http_requests_total counter');
+  for (const [key, value] of requestCounters.entries()) {
+    const [method, route, status] = key.split('|');
+    lines.push(`http_requests_total{${labelsToString({ method, route, status })}} ${value}`);
+  }
+
+  lines.push('# HELP http_request_duration_seconds Duration of /travail HTTP requests in seconds');
+  lines.push('# TYPE http_request_duration_seconds histogram');
+  for (const [key, series] of travailHistograms.entries()) {
+    const [method, status] = key.split('|');
+    let cumulative = 0;
+
+    for (let i = 0; i < histogramBuckets.length; i += 1) {
+      cumulative += series.bucketCounts[i];
+      lines.push(`http_request_duration_seconds_bucket{${labelsToString({ method, route: '/travail', status, le: histogramBuckets[i] })}} ${cumulative}`);
+    }
+
+    lines.push(`http_request_duration_seconds_bucket{${labelsToString({ method, route: '/travail', status, le: '+Inf' })}} ${series.count}`);
+    lines.push(`http_request_duration_seconds_sum{${labelsToString({ method, route: '/travail', status })}} ${series.sum}`);
+    lines.push(`http_request_duration_seconds_count{${labelsToString({ method, route: '/travail', status })}} ${series.count}`);
+  }
+
+  lines.push('# HELP service_hits_handled_total Total number of hits handled by service');
+  lines.push('# TYPE service_hits_handled_total counter');
+  lines.push(`service_hits_handled_total{${labelsToString({ service })}} ${totalHandled}`);
+
+  lines.push('# HELP service_dependency_up Dependency status (1=up, 0=down)');
+  lines.push('# TYPE service_dependency_up gauge');
+  lines.push(`service_dependency_up{${labelsToString({ service, dependency: 'api' })}} ${dependencyApiUp ? 1 : 0}`);
+
+  return `${lines.join('\n')}\n`;
+}
 
 function contentTypeFor(filePath) {
   if (filePath.endsWith('.html')) return 'text/html; charset=utf-8';
@@ -54,6 +140,7 @@ async function processWorkload() {
   const response = await fetch(`${apiBaseUrl}/api/messages`);
 
   if (!response.ok) {
+    dependencyApiUp = 0;
     throw new Error(`dependency returned ${response.status}`);
   }
 
@@ -68,6 +155,7 @@ async function processWorkload() {
 
   totalHandled += 1;
   pendingHandled += 1;
+  dependencyApiUp = 1;
 
   return {
     status: 'ok',
@@ -138,8 +226,30 @@ function startPulse() {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+  const startTime = process.hrtime.bigint();
+  let routeLabel = 'unmatched';
+
+  res.on('finish', () => {
+    if (routeLabel === '/metrics') {
+      return;
+    }
+
+    incrementRequestCount(req.method, routeLabel, String(res.statusCode));
+    if (routeLabel === '/travail') {
+      const durationSeconds = Number(process.hrtime.bigint() - startTime) / 1e9;
+      observeTravailHistogram(req.method, String(res.statusCode), durationSeconds);
+    }
+  });
+
+  if (url.pathname === '/metrics') {
+    routeLabel = '/metrics';
+    res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
+    res.end(renderMetrics());
+    return;
+  }
 
   if (url.pathname === '/health') {
+    routeLabel = '/health';
     const body = {
       status: 'ok',
       timestamp: new Date().toISOString(),
@@ -150,11 +260,13 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/travail') {
+    routeLabel = '/travail';
     try {
       const result = await processWorkload();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
     } catch (error) {
+      dependencyApiUp = 0;
       res.writeHead(503, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'unavailable', error: error.message }));
     }
@@ -162,6 +274,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname.startsWith('/api/')) {
+    routeLabel = '/api/*';
     try {
       let body;
       if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -176,11 +289,14 @@ const server = http.createServer(async (req, res) => {
         'Content-Type': req.headers['content-type'] || 'application/json',
       });
 
+      dependencyApiUp = 1;
+
       res.writeHead(proxied.status, {
         'Content-Type': proxied.headers.get('content-type') || 'application/json',
       });
       res.end(proxied.text);
     } catch (error) {
+      dependencyApiUp = 0;
       res.writeHead(503, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: `api unavailable: ${error.message}` }));
     }
@@ -188,6 +304,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/' || url.pathname === '/index.html') {
+    routeLabel = '/';
     try {
       const html = fs.readFileSync(htmlPath, 'utf8');
       res.writeHead(200, { 'Content-Type': contentTypeFor(htmlPath) });

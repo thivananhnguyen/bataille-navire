@@ -244,4 +244,56 @@ Etat actuel:
 - Passation interne non realisee pour le moment (section prete a etre completee).
 - Validation externe (autre equipage) en attente.
 
+## Phase 11 - Mesure branchee sur la flotte
+
+Objectif couvert:
+- Chaque service de la flotte expose ses metriques (`api`, `front`, `worker`).
+- Prometheus est configure pour scraper les trois services.
+- La definition du dashboard Grafana est versionnee en JSON dans le repo.
+
+Fichiers ajoutes/modifies:
+- `compose.prod.yml`: services `prometheus` et `grafana`
+- `observability/prometheus/prometheus.yml`: cibles de scrape
+- `observability/grafana/provisioning/datasources/prometheus.yml`: datasource pre-provisionnee
+- `observability/grafana/provisioning/dashboards/dashboard.yml`: provider dashboards
+- `observability/grafana/dashboards/bataille-navire-phase11.json`: export dashboard
+- `front/server.js`: endpoint `/metrics` + instrumentation `/travail`
+- `worker/src/index.js`: endpoint `/metrics` + instrumentation `/travail`
+- `api/src/observability/metrics.js`: `service_hits_handled_total`, `service_dependency_up`
+- `api/src/controllers/messagesController.js`: remontee d'etat de dependance DB
+
+Lancement local (phase 11):
+```bash
+docker compose -f compose.prod.yml --env-file .env up -d postgres api worker front prometheus grafana
+```
+
+Verification rapide:
+```bash
+curl -s http://127.0.0.1:9090/api/v1/targets | grep -E 'api:3000|front:8080|worker:3002'
+curl -s http://127.0.0.1:8080/metrics | head -n 20
+curl -s http://127.0.0.1:3002/metrics | head -n 20
+```
+
+Metriques ciblees (J3 + Phase 11):
+- Metriques J3 conservees:
+	- Disponibilite cible (up):
+		- `up{job=~"api|front|worker"}`
+	- Debit HTTP (requetes par seconde):
+		- `sum(rate(http_requests_total[1m])) by (job, route)`
+	- Latence p95 (histogramme):
+		- `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (job, le))`
+- Coups encaisses par service et par seconde:
+	- `sum(rate(service_hits_handled_total[1m])) by (service)`
+- Duree de `/travail` en histogramme (buckets), pour ne pas masquer les pics:
+	- `sum(rate(http_request_duration_seconds_bucket{route="/travail"}[1m])) by (job, le)`
+- Nombre d'exemplaires repondants par service:
+	- `sum(up{job=~"api|front|worker"}) by (job)`
+- Etat de dependance par service en 0/1:
+	- `avg(service_dependency_up) by (service, dependency)`
+
+Etat actuel:
+- Metriques HTTP + histogramme de `/travail` disponibles sur les 3 services.
+- Metrique `service_dependency_up` disponible pour distinguer dependances KO/OK.
+- Dashboard exporte et versionne dans le repo.
+
 
