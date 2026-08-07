@@ -1,6 +1,7 @@
 const client = require('prom-client');
 
 const register = new client.Registry();
+const serviceVersion = process.env.VERSION || 'dev';
 
 const httpRequestsTotal = new client.Counter({
   name: 'http_requests_total',
@@ -42,6 +43,15 @@ const serviceDependencyUp = new client.Gauge({
   labelNames: ['service', 'dependency'],
   registers: [register],
 });
+
+const serviceBuildInfo = new client.Gauge({
+  name: 'service_build_info',
+  help: 'Build information for service version (always 1)',
+  labelNames: ['service', 'version'],
+  registers: [register],
+});
+
+serviceBuildInfo.set({ service: 'api', version: serviceVersion }, 1);
 
 function normalizeRouteLabel(req) {
   if (req.route && typeof req.route.path === 'string') {

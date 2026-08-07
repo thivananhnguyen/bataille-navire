@@ -102,6 +102,10 @@ function renderMetrics() {
   lines.push('# TYPE service_dependency_up gauge');
   lines.push(`service_dependency_up{${labelsToString({ service, dependency: 'api' })}} ${dependencyApiUp ? 1 : 0}`);
 
+  lines.push('# HELP service_build_info Build information for service version (always 1)');
+  lines.push('# TYPE service_build_info gauge');
+  lines.push(`service_build_info{${labelsToString({ service, version })}} 1`);
+
   return `${lines.join('\n')}\n`;
 }
 
