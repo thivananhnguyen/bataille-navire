@@ -126,7 +126,29 @@ jobs:
           VM_PORT: ${{ secrets.VM_PORT }}
         run: |
           set -euo pipefail
-          ssh-keyscan -p "$VM_PORT" "$VM_HOST" >> ~/.ssh/known_hosts
+          vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
+          vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
+
+          if [[ -z "$vm_host" || -z "$vm_port" ]]; then
+            echo "VM_HOST/VM_PORT is empty after sanitization"
+            exit 1
+          fi
+
+          # Retry because keyscan can fail briefly while runner/VM networking is warming up.
+          ok=0
+          for i in 1 2 3 4 5; do
+            if ssh-keyscan -T 5 -p "$vm_port" "$vm_host" >> ~/.ssh/known_hosts 2>/dev/null; then
+              ok=1
+              break
+            fi
+            echo "ssh-keyscan attempt $i failed for ${vm_host}:${vm_port}, retrying..."
+            sleep 2
+          done
+
+          if [[ "$ok" -ne 1 ]]; then
+            echo "Unable to fetch host key from ${vm_host}:${vm_port}. Check VM_HOST/VM_PORT and runner network access."
+            exit 1
+          fi
 
       - name: Prepare deploy env file
         env:
@@ -177,9 +199,13 @@ jobs:
           VM_USER: ${{ secrets.VM_USER }}
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/id_vm_prod -p "$VM_PORT" -o BatchMode=yes "$VM_USER@$VM_HOST" 'mkdir -p /srv/flotte'
-          scp -i ~/.ssh/id_vm_prod -P "$VM_PORT" compose.prod.yml "$VM_USER@$VM_HOST:/srv/flotte/compose.prod.yml"
-          scp -i ~/.ssh/id_vm_prod -P "$VM_PORT" .deploy.env "$VM_USER@$VM_HOST:/srv/flotte/.env"
+          vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
+          vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
+          vm_user="$(printf '%s' "$VM_USER" | tr -d '[:space:]')"
+
+          ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" 'mkdir -p /srv/flotte'
+          scp -i ~/.ssh/id_vm_prod -P "$vm_port" -o StrictHostKeyChecking=accept-new compose.prod.yml "$vm_user@$vm_host:/srv/flotte/compose.prod.yml"
+          scp -i ~/.ssh/id_vm_prod -P "$vm_port" -o StrictHostKeyChecking=accept-new .deploy.env "$vm_user@$vm_host:/srv/flotte/.env"
 
       - name: Deploy full fleet on VM
         env:
@@ -188,7 +214,11 @@ jobs:
           VM_USER: ${{ secrets.VM_USER }}
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/id_vm_prod -p "$VM_PORT" -o BatchMode=yes "$VM_USER@$VM_HOST" '
+          vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
+          vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
+          vm_user="$(printf '%s' "$VM_USER" | tr -d '[:space:]')"
+
+          ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" '
             set -euo pipefail
             cd /srv/flotte
             docker compose -f compose.prod.yml --env-file .env pull
@@ -203,7 +233,11 @@ jobs:
           VM_USER: ${{ secrets.VM_USER }}
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/id_vm_prod -p "$VM_PORT" -o BatchMode=yes "$VM_USER@$VM_HOST" '
+          vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
+          vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
+          vm_user="$(printf '%s' "$VM_USER" | tr -d '[:space:]')"
+
+          ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" '
             set -euo pipefail
             cd /srv/flotte
 
