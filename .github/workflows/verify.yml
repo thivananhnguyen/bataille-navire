@@ -60,6 +60,11 @@ jobs:
           fi
           echo "No obvious hardcoded secrets found."
 
+      - name: Secret scan with gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install backend dependencies
         working-directory: api
         run: npm ci
