@@ -239,7 +239,7 @@ Objectif couvert:
 - Tableau des 6 pannes avec symptome/cause/manoeuvre/temps.
 
 Livrable cree:
-- `RUNBOOK_FLOTTE.md`
+- `docs/RUNBOOK_FLOTTE.md`
 
 Etat actuel:
 - Projet de groupe (Make + Thi Van Anh).
@@ -441,4 +441,33 @@ Dernier releve du carnet (mesure locale):
 Question cle:
 - Combien de coups une livraison coute-t-elle vraiment ?
 - L'ecart entre les deux lignes (compose vs rolling update) est le resume de la phase.
+
+## Retour arriere (rollback) - procedure courte
+
+Si une livraison degrade la flotte, on revient a la version precedente avec une manoeuvre simple et verifiable.
+
+Rollback Compose (machine cible):
+1. Revenir au tag stable precedent dans `/srv/flotte/.env`.
+2. Relancer la flotte avec ce tag.
+
+```bash
+cd /srv/flotte
+sed -i 's/^TAG=.*/TAG=<sha_precedent_stable>/' .env
+docker compose -f compose.prod.yml --env-file .env pull
+docker compose -f compose.prod.yml --env-file .env up -d
+docker compose -f compose.prod.yml --env-file .env ps
+```
+
+Rollback Kubernetes (cluster):
+1. Annuler le dernier rollout des services applicatifs.
+2. Verifier que chaque deployment revient en etat `successfully rolled out`.
+
+```bash
+kubectl -n flotte rollout undo deploy/api
+kubectl -n flotte rollout undo deploy/front
+kubectl -n flotte rollout undo deploy/worker
+kubectl -n flotte rollout status deploy/api
+kubectl -n flotte rollout status deploy/front
+kubectl -n flotte rollout status deploy/worker
+```
 
