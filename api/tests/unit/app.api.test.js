@@ -38,13 +38,34 @@ describe('Message API unit behavior', () => {
   });
 
   test('GET /travail returns work status', async () => {
-    messageModel.performWork.mockResolvedValue(2);
+    messageModel.performWork.mockResolvedValue({
+      activeMessages: 2,
+      workEventId: 10,
+      durationMs: 3.21,
+    });
 
     const response = await request(app).get('/travail');
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ status: 'ok', activeMessages: 2 });
+    expect(response.body).toEqual({
+      status: 'ok',
+      activeMessages: 2,
+      workEventId: 10,
+      durationMs: 3.21,
+    });
     expect(messageModel.performWork).toHaveBeenCalledTimes(1);
+  });
+
+  test('GET /travail returns 503 when work dependency fails', async () => {
+    messageModel.performWork.mockRejectedValue(new Error('db down'));
+
+    const response = await request(app).get('/travail');
+
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({
+      status: 'unavailable',
+      error: 'work dependency unavailable',
+    });
   });
 
   test('POST /pavillon writes file and returns 201', async () => {

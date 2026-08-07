@@ -27,9 +27,13 @@ const cleanupExpiredMessages = asyncHandler(async (req, res) => {
 });
 
 const processWork = asyncHandler(async (req, res) => {
-  const activeMessages = await messageModel.performWork();
-  recordHandled(1);
-  return res.json({ status: 'ok', activeMessages });
+  try {
+    const workResult = await messageModel.performWork();
+    recordHandled(1);
+    return res.json({ status: 'ok', ...workResult });
+  } catch (error) {
+    return res.status(503).json({ status: 'unavailable', error: 'work dependency unavailable' });
+  }
 });
 
 module.exports = {

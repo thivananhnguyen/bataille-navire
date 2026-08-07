@@ -16,7 +16,7 @@ describe('Message API integration with PostgreSQL', () => {
   });
 
   beforeEach(async () => {
-    await pool.query('TRUNCATE TABLE messages');
+    await pool.query('TRUNCATE TABLE messages, work_events RESTART IDENTITY');
   });
 
   afterAll(async () => {
@@ -72,5 +72,7 @@ describe('Message API integration with PostgreSQL', () => {
     expect(response.status).toBe(200);
     expect(response.body.status).toBe('ok');
     expect(response.body.activeMessages).toBe(1);
+    expect(response.body.workEventId).toBeDefined();
+    expect(typeof response.body.durationMs).toBe('number');
   });
 });
