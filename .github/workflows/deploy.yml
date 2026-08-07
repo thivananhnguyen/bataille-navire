@@ -110,7 +110,7 @@ jobs:
             fi
           fi
 
-          if timeout 3 bash -c "cat < /dev/null > /dev/tcp/$vm_host/$vm_port" 2>/dev/null; then
+          if ssh-keyscan -T 3 -p "$vm_port" "$vm_host" >/dev/null 2>&1; then
             echo "DEPLOY_MODE=ssh" >> "$GITHUB_ENV"
             echo "DEPLOY_VM_HOST=$vm_host" >> "$GITHUB_ENV"
             echo "DEPLOY_VM_PORT=$vm_port" >> "$GITHUB_ENV"
@@ -183,7 +183,7 @@ jobs:
           if [[ "$deploy_mode" == "docker_local" ]]; then
             docker cp .deploy.env vm-prod:/srv/flotte/.env
             docker exec vm-prod sh -lc '
-              set -euo pipefail
+              set -eu
               cd /srv/flotte
               docker compose -f compose.prod.yml --env-file .env pull
               docker compose -f compose.prod.yml --env-file .env up -d
@@ -195,7 +195,7 @@ jobs:
           scp -i ~/.ssh/id_vm_prod -P "$vm_port" -o StrictHostKeyChecking=accept-new .deploy.env "$vm_user@$vm_host:/srv/flotte/.env"
 
           ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" '
-            set -euo pipefail
+            set -eu
             cd /srv/flotte
             docker compose -f compose.prod.yml --env-file .env pull
             docker compose -f compose.prod.yml --env-file .env up -d
@@ -217,13 +217,13 @@ jobs:
 
           if [[ "$deploy_mode" == "docker_local" ]]; then
             docker exec -e FRONT_PORT="$front_port" vm-prod sh -lc '
-              set -euo pipefail
+              set -eu
               cd /srv/flotte
 
-              timeout 30 bash -c "until wget -q -O- http://localhost:${FRONT_PORT}/ >/dev/null; do sleep 2; done"
-              timeout 30 bash -c "until docker compose -f compose.prod.yml --env-file .env exec -T api wget -q -O- http://localhost:3000/health >/dev/null; do sleep 2; done"
-              timeout 30 bash -c "until docker compose -f compose.prod.yml --env-file .env exec -T worker wget -q -O- http://localhost:3002/health >/dev/null; do sleep 2; done"
-              timeout 30 bash -c "until docker compose -f compose.prod.yml --env-file .env exec -T postgres pg_isready -U message_user -d message_db >/dev/null; do sleep 2; done"
+              timeout 30 sh -c "until wget -q -O- http://localhost:${FRONT_PORT}/ >/dev/null; do sleep 2; done"
+              timeout 30 sh -c "until docker compose -f compose.prod.yml --env-file .env exec -T api wget -q -O- http://localhost:3000/health >/dev/null; do sleep 2; done"
+              timeout 30 sh -c "until docker compose -f compose.prod.yml --env-file .env exec -T worker wget -q -O- http://localhost:3002/health >/dev/null; do sleep 2; done"
+              timeout 30 sh -c "until docker compose -f compose.prod.yml --env-file .env exec -T postgres pg_isready -U message_user -d message_db >/dev/null; do sleep 2; done"
 
               docker compose -f compose.prod.yml --env-file .env ps
             '
@@ -232,13 +232,13 @@ jobs:
           fi
 
           ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" "
-            set -euo pipefail
+            set -eu
             cd /srv/flotte
 
-            timeout 30 bash -c 'until wget -q -O- http://localhost:${front_port}/ >/dev/null; do sleep 2; done'
-            timeout 30 bash -c 'until docker compose -f compose.prod.yml --env-file .env exec -T api wget -q -O- http://localhost:3000/health >/dev/null; do sleep 2; done'
-            timeout 30 bash -c 'until docker compose -f compose.prod.yml --env-file .env exec -T worker wget -q -O- http://localhost:3002/health >/dev/null; do sleep 2; done'
-            timeout 30 bash -c 'until docker compose -f compose.prod.yml --env-file .env exec -T postgres pg_isready -U message_user -d message_db >/dev/null; do sleep 2; done'
+            timeout 30 sh -c 'until wget -q -O- http://localhost:${front_port}/ >/dev/null; do sleep 2; done'
+            timeout 30 sh -c 'until docker compose -f compose.prod.yml --env-file .env exec -T api wget -q -O- http://localhost:3000/health >/dev/null; do sleep 2; done'
+            timeout 30 sh -c 'until docker compose -f compose.prod.yml --env-file .env exec -T worker wget -q -O- http://localhost:3002/health >/dev/null; do sleep 2; done'
+            timeout 30 sh -c 'until docker compose -f compose.prod.yml --env-file .env exec -T postgres pg_isready -U message_user -d message_db >/dev/null; do sleep 2; done'
 
             docker compose -f compose.prod.yml --env-file .env ps
           "
