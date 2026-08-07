@@ -218,13 +218,14 @@ Contexte:
 | :---- | :---- | :---- | :---- | :---- | :---- |
 | Redemarrage API | `GET /api/messages` ne repond plus pendant le redemarrage | Process API interrompu | `docker restart <api_container>` | Retour a `200` | Retour `200`: 1s, manoeuvre totale: 2s |
 | Redemarrage PostgreSQL | Erreurs temporaires cote API (indisponibilite DB) | PostgreSQL non disponible pendant restart | `docker restart <postgres_container>` | Retour a `200` | Retour `200`: 1s, manoeuvre totale: 1s |
-| Pause puis reprise API | Micro-coupure volontaire pendant la pause | Process fige par `docker pause` | `docker unpause <api_container>` | `200` immediat apres reprise | Retour `200`: 0s, manoeuvre totale: 6s |
+| Pause puis reprise API | Micro-coupure volontaire pendant la pause | Process fige par `docker pause` | `docker unpause <api_container>` | `200` immediat apres reprise | Retour `200`: 0s, manoeuvre totale: 3s |
 | Pause worker | Worker suspendu (impact direct limite sur `/api/messages`) | Conteneur worker mis en pause | `docker unpause <worker_container>` | Worker repris, service principal reste accessible | Non chronometre |
 | Redemarrage front | `GET /health` passe temporairement en erreur pendant reboot | Process front redemarre | `docker restart <front_container>` | `GET /health` revient a `200` | Non chronometre |
 | Kill worker puis relance | Worker arrete brutalement | Process tue (`docker kill`) | `docker start <worker_container>` | Recuperation confirmee apres relance manuelle | Non chronometre |
 
 ### Note utile
 - Un essai de deconnexion/reconnexion reseau API a parfois fait perdre l'alias reseau `api` sur ce poste local. Ce cas est garde comme observation de debug, mais il n'est pas utilise pour le chronometrage principal afin de garder des mesures reproductibles.
+- Mesure (2026-08-07): incidents chronometres executes en local via script shell (`restart api`, `restart postgres`, `pause/unpause api`) pour mise a jour rapide du journal.
 
 ## Phase 10 - Runbook de la flotte
 
@@ -242,4 +243,5 @@ Etat actuel:
 - Le runbook couvre deux parcours: debug local Docker Compose et debug CI/VM (runner + vm-prod).
 - Passation interne non realisee pour le moment (section prete a etre completee).
 - Validation externe (autre equipage) en attente.
+
 
