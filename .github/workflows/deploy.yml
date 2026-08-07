@@ -76,9 +76,11 @@ jobs:
           VM_USER: ${{ secrets.VM_USER }}
           VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
-          for v in VM_HOST VM_PORT VM_USER VM_SSH_KEY DB_PASSWORD; do
+          for v in VM_HOST VM_PORT VM_USER VM_SSH_KEY DB_PASSWORD GRAFANA_ADMIN_USER GRAFANA_ADMIN_PASSWORD; do
             if [[ -z "${!v:-}" ]]; then
               echo "Missing required secret: $v"
               exit 1
@@ -157,6 +159,8 @@ jobs:
           VM_USER: ${{ secrets.VM_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
           deploy_mode="$(printf '%s' "${DEPLOY_MODE:-ssh}" | tr -d '[:space:]')"
@@ -178,6 +182,8 @@ jobs:
             echo "FRONT_PORT=${FRONT_PORT}"
             echo "MESSAGE_TTL_SECONDS=${MESSAGE_TTL_SECONDS}"
             echo "CLEANUP_INTERVAL_SECONDS=${CLEANUP_INTERVAL_SECONDS}"
+            echo "GRAFANA_ADMIN_USER=${GRAFANA_ADMIN_USER}"
+            echo "GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}"
           } > .deploy.env
 
           if [[ "$deploy_mode" == "docker_local" ]]; then
