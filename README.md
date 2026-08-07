@@ -328,4 +328,82 @@ curl -s http://127.0.0.1:19090/api/v1/query?query=sum(rate(service_hits_handled_
 curl -s http://127.0.0.1:19090/api/v1/query?query=avg(service_dependency_up)%20by%20(service,dependency)
 ```
 
+Mesure locale (2026-08-07, ports 8082/19090/13001):
+- Charge injectee avant mesure: `front=220`, `worker=180`, `api=100` appels `/travail`.
+- Panel 1 (coups/s): `front=3.88`, `worker=0`, `api=0` (fenetre `rate[1m]`, peut retomber a 0 hors fenetre active).
+- Panel 2 (latence p95 `/travail`): `front=0.0098s`, `worker=0.0093s`, `api=NaN` (pas assez d'echantillons sur la fenetre au moment de la requete).
+- Panel 3 (dependances): `front->api=1`, `worker->api=1`, `api->postgres=1`.
+- Panel 4 (version): `front=dev`, `worker=dev`, `api=dev`.
+
+## Phase 13 - Manifestes Kubernetes de la flotte
+
+Objectif couvert:
+- Porter la flotte sur cluster Kubernetes avec un fichier par objet.
+- Garder l'etat persistant (base + pavillon) via PVC.
+- Exposer le front via Ingress.
+- Renforcer la securite des workloads applicatifs.
+
+Dossier des manifestes:
+- `k8s/phase13/namespace.yaml`
+- `k8s/phase13/configmap.yaml`
+- `k8s/phase13/secret.yaml`
+- `k8s/phase13/pvc-postgres.yaml`
+- `k8s/phase13/pvc-pavillon.yaml`
+- `k8s/phase13/deployment-postgres.yaml`
+- `k8s/phase13/service-postgres.yaml`
+- `k8s/phase13/deployment-api.yaml`
+- `k8s/phase13/service-api.yaml`
+- `k8s/phase13/deployment-worker.yaml`
+- `k8s/phase13/service-worker.yaml`
+- `k8s/phase13/deployment-front.yaml`
+- `k8s/phase13/service-front.yaml`
+- `k8s/phase13/ingress-front.yaml`
+
+Deploiement cluster (phase 13):
+```bash
+kubectl apply -f k8s/phase13/namespace.yaml
+kubectl apply -f k8s/phase13/configmap.yaml -f k8s/phase13/secret.yaml
+kubectl apply -f k8s/phase13/pvc-postgres.yaml -f k8s/phase13/pvc-pavillon.yaml
+kubectl apply -f k8s/phase13/deployment-postgres.yaml -f k8s/phase13/service-postgres.yaml
+kubectl apply -f k8s/phase13/deployment-api.yaml -f k8s/phase13/service-api.yaml
+kubectl apply -f k8s/phase13/deployment-worker.yaml -f k8s/phase13/service-worker.yaml
+kubectl apply -f k8s/phase13/deployment-front.yaml -f k8s/phase13/service-front.yaml
+kubectl apply -f k8s/phase13/ingress-front.yaml
+```
+
+Hardening applique (api/front/worker):
+- `securityContext.runAsNonRoot: true`
+- `securityContext.allowPrivilegeEscalation: false`
+- `securityContext.readOnlyRootFilesystem: true`
+- Mount `emptyDir` sur `/tmp` pour conserver un espace ecriture minimal.
+
+Strategie image immuable:
+- Les 3 deployments applicatifs utilisent des references image pinnees par digest (`image@sha256:...`) au lieu de tags mutables.
+
+Validation reelle (k3d todo-cluster, 2026-08-07):
+```bash
+kubectl -n flotte get pods,svc,ingress,pvc
+kubectl -n flotte rollout status deploy/postgres --timeout=180s
+kubectl -n flotte rollout status deploy/api --timeout=180s
+kubectl -n flotte rollout status deploy/front --timeout=180s
+kubectl -n flotte rollout status deploy/worker --timeout=180s
+```
+
+Resultats observes:
+- Objets cluster presents: pods, services, ingress et PVC crees dans le namespace `flotte`.
+- Avec images locales en tags `:dev` importees en k3d, les workloads demarrent et les checks health passent.
+- Apres passage en images pinnees par digest, le rollout local peut echouer en `ErrImagePull/ImagePullBackOff` si ces digests ne sont pas publies sur le registry cible.
+
+Condition de succes finale (environnement cible):
+1. Publier les 3 images (api/front/worker) sur le registry.
+2. Recuperer les digests publies reellement disponibles.
+3. Mettre a jour les manifests avec ces digests.
+4. Verifier que les trois commandes `kubectl -n flotte rollout status deploy/{api,front,worker}` retournent `successfully rolled out`.
+
+Notes importantes:
+- Le fichier `k8s/phase13/secret.yaml` est volontairement sans valeurs sensibles (champ vide) pour eviter tout secret en clair dans le repo.
+- Creer la vraie secret au deploiement via `kubectl create secret ... --dry-run=client -o yaml | kubectl apply -f -`.
+- Le pavillon est persiste dans le PVC `pavillon-data`, monte sur `/data` pour `api`, `front`, `worker`.
+- L'Ingress expose `front` sur l'hote `bataille-navire.local` (adapter selon votre ingress controller).
+
 

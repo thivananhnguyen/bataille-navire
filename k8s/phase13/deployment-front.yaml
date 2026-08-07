@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: front
+  namespace: flotte
+spec:
+  replicas: 1
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: front
+  template:
+    metadata:
+      labels:
+        app: front
+    spec:
+      containers:
+        - name: front
+          image: nguyenthivananh/bataille-des-navires-front@sha256:16f6eb09a9274922f83cb4ae7df79c2d19645ae11e2780056dcf7f78e57c791d
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 96Mi
+            limits:
+              cpu: 400m
+              memory: 256Mi
+          env:
+            - name: PORT
+              value: "8080"
+            - name: API_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: API_BASE_URL
+            - name: TABLEAU_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: TABLEAU_URL
+            - name: GROUPE
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: GROUPE_DISPLAY
+            - name: COULEUR
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: COULEUR
+            - name: SERVICE
+              value: front
+            - name: VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: TAG
+            - name: URL_INTERNE
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: URL_INTERNE_FRONT
+            - name: PAVILLON_FICHIER
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: PAVILLON_FICHIER
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          volumeMounts:
+            - name: pavillon-data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: pavillon-data
+          persistentVolumeClaim:
+            claimName: pavillon-data
+        - name: tmp
+          emptyDir: {}

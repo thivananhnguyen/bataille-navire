@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: flotte
+spec:
+  replicas: 1
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          image: nguyenthivananh/bataille-des-navires-api@sha256:8012d58529099e6f16b76782b5d95a4d8f12a39a51ad08b1f189594e58d5f5ea
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          env:
+            - name: PORT
+              value: "3000"
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: DB_PORT
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: DB_NAME
+            - name: DB_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: DB_USER
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: flotte-secrets
+                  key: DB_PASSWORD
+            - name: MESSAGE_TTL_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: MESSAGE_TTL_SECONDS
+            - name: TABLEAU_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: TABLEAU_URL
+            - name: GROUPE
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: GROUPE_DISPLAY
+            - name: COULEUR
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: COULEUR
+            - name: SERVICE
+              value: api
+            - name: VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: TAG
+            - name: URL_INTERNE
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: URL_INTERNE_API
+            - name: PAVILLON_FICHIER
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: PAVILLON_FICHIER
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          volumeMounts:
+            - name: pavillon-data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: pavillon-data
+          persistentVolumeClaim:
+            claimName: pavillon-data
+        - name: tmp
+          emptyDir: {}
