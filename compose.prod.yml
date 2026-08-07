@@ -57,9 +57,13 @@ services:
       CLEANUP_INTERVAL_SECONDS: ${CLEANUP_INTERVAL_SECONDS:-30}
       WORKER_PORT: ${WORKER_PORT:-3002}
       TABLEAU_URL: ${TABLEAU_URL:-}
+      GROUPE: ${GROUPE_DISPLAY:-Bataille des Navires}
       GROUPE_DISPLAY: ${GROUPE_DISPLAY:-Bataille des Navires}
       COULEUR: ${COULEUR:-#1f6feb}
+      SERVICE: worker
       VERSION: ${TAG:-dev}
+      URL_INTERNE: http://worker:${WORKER_PORT:-3002}
+      PAVILLON_FICHIER: ${PAVILLON_FICHIER:-/data/pavillon.txt}
     depends_on:
       api:
         condition: service_healthy
@@ -79,13 +83,25 @@ services:
 
   front:
     image: ${REGISTRY:?REGISTRY is required}/${GROUPE_SLUG:?GROUPE_SLUG is required}-front:${TAG:?TAG is required}
+    environment:
+      PORT: 8080
+      API_BASE_URL: http://api:3000
+      TABLEAU_URL: ${TABLEAU_URL:-}
+      GROUPE: ${GROUPE_DISPLAY:-Bataille des Navires}
+      COULEUR: ${COULEUR:-#1f6feb}
+      SERVICE: front
+      VERSION: ${TAG:-dev}
+      URL_INTERNE: http://front:8080
+      PAVILLON_FICHIER: ${PAVILLON_FICHIER:-/data/pavillon.txt}
+    volumes:
+      - pavillon_data:/data
     depends_on:
       api:
         condition: service_healthy
     ports:
       - "${FRONT_PORT:-8080}:8080"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 10

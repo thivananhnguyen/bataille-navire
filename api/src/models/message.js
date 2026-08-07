@@ -21,6 +21,16 @@ async function initializeMessageTable() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS work_events (
+      id BIGSERIAL PRIMARY KEY,
+      active_count INTEGER NOT NULL,
+      payload_size INTEGER NOT NULL,
+      checksum BIGINT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
 }
 
 async function createMessage({ author, content, expiresAt }) {
@@ -51,12 +61,58 @@ async function cleanupExpiredMessages() {
 }
 
 async function performWork() {
-  const result = await pool.query(
-    `SELECT COUNT(*)::int AS active_count
-     FROM messages
-     WHERE expires_at > NOW()`
-  );
-  return result.rows[0].active_count;
+  const client = await pool.connect();
+  const startedAt = process.hrtime.bigint();
+
+  try {
+    await client.query('BEGIN');
+
+    const activeResult = await client.query(
+      `SELECT id, author, content
+       FROM messages
+       WHERE expires_at > NOW()
+       ORDER BY created_at DESC
+       LIMIT 50`
+    );
+
+    const activeMessages = activeResult.rows.length;
+    const payloadSize = activeResult.rows.reduce(
+      (sum, row) => sum + row.id.length + row.author.length + row.content.length,
+      0
+    );
+
+    let checksum = 0;
+    const iterations = 20000 + (payloadSize * 5);
+    for (let i = 0; i < iterations; i += 1) {
+      checksum = (checksum + ((i * 31) % 9973)) % 2147483647;
+    }
+
+    const insertResult = await client.query(
+      `INSERT INTO work_events (active_count, payload_size, checksum)
+       VALUES ($1, $2, $3)
+       RETURNING id`,
+      [activeMessages, payloadSize, checksum]
+    );
+
+    await client.query(
+      `DELETE FROM work_events
+       WHERE created_at < NOW() - INTERVAL '15 minutes'`
+    );
+
+    await client.query('COMMIT');
+
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+    return {
+      activeMessages,
+      workEventId: insertResult.rows[0].id,
+      durationMs: Number(durationMs.toFixed(2)),
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 module.exports = {

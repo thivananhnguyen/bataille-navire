@@ -102,3 +102,66 @@ curl -X POST http://localhost:3000/pavillon \
 
 2. Verifier que le pavillon est visible au tableau
 3. Lancer un vrai push pour redeployer via pipeline, puis verifier le meme pavillon au moins 15 secondes apres le redeploiement
+
+## Phase 7 - Route de travail et saturation
+
+### Ce qui est implemente
+- La route `GET /travail` fait un travail reel: lecture en base, calcul CPU court, ecriture d'un evenement en base
+- En cas de dependance indisponible (exemple DB), la route retourne `503`
+- Un script de salve est fourni: `scripts/phase7_salve.sh`
+- Le service `worker` expose aussi `GET /travail` (appel API + calcul CPU) et envoie son pulse
+- Le service `front` expose `GET /travail` (appel API + calcul CPU), `GET /health`, proxy `/api/*`, et envoie son pulse
+
+### Test rapide
+```bash
+TABLEAU_URL=https://services-battle.vercel.app \
+GROUPE="Bataille des Navires" \
+SERVICE=api \
+NOMBRE=200 \
+SALVES=5 \
+./scripts/phase7_salve.sh
+```
+
+Resultat attendu: le carre API peut passer pale sous salve, puis redevenir plein quand le retard se resorbe.
+
+### Journal de bord Phase 7 (2026-08-07)
+
+Verification code et tests:
+- `npm test -- --runInBand` (api): 12/12 tests unitaires OK
+- `npm run test:integration -- --runInBand` (api): echec local attendu sans PostgreSQL sur `127.0.0.1:5432`
+
+Verification runtime locale (Docker Compose, API_PORT=3010):
+1. DB active, appel `GET /travail`:
+- Statut HTTP observe: `200 OK`
+2. DB arretee (`docker compose stop postgres`), appel `GET /travail`:
+- Statut HTTP observe: `503 Service Unavailable`
+3. DB redemarree (`docker compose start postgres`), appel `GET /travail`:
+- Statut HTTP observe: `200 OK`
+
+Salve manuelle envoyee vers Services Battle:
+```bash
+TABLEAU_URL=https://services-battle.vercel.app \
+GROUPE="Bataille des Navires" \
+SERVICE=api \
+NOMBRE=200 \
+SALVES=2 \
+./scripts/phase7_salve.sh
+```
+
+Sortie observee:
+- `salve 1/2 sent`
+- `salve 2/2 sent`
+
+Critere vise Phase 7:
+- Le carre API doit palir sous salve puis redevenir plein quand le retard se resorbe.
+
+## Phase 6 (skip temporaire)
+
+Decision prise: on avance vers Phase 7/8 avant de finaliser les sondes de verite de la phase 6.
+
+Risque accepte temporairement:
+- L'endpoint API `/health` est encore basique (il ne valide pas encore la dependance DB de facon stricte).
+
+Plan de retour Phase 6:
+- Revenir juste apres Phase 8 pour brancher health profond DB et test associe.
+
