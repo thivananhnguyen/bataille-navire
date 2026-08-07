@@ -1,0 +1,12 @@
+/*
+# Unignore .gitignore so it remains tracked
+!.gitignore
+# Keep only the front folder and its contents
+!/front/
+!/front/**
+
+# Local ignores (keep for working tree hygiene)
+node_modules/
+.env
+.env.*
+api/.env

@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>💬 Mur de Messages Éphémères</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed, #0ea5e9);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+
+            max-width: 900px;
+            margin: auto;
+
+            background: rgba(255, 255, 255, .15);
+
+            backdrop-filter: blur(20px);
+
+            border-radius: 25px;
+
+            padding: 35px;
+
+            box-shadow: 0 20px 60px rgba(0, 0, 0, .25);
+
+        }
+
+        h1 {
+
+            text-align: center;
+            color: white;
+            font-size: 2.6rem;
+            margin-bottom: 10px;
+
+        }
+
+        .subtitle {
+
+            text-align: center;
+            color: #f1f5f9;
+            margin-bottom: 35px;
+
+        }
+
+        form {
+
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+
+        }
+
+        input,
+        textarea {
+
+            border: none;
+
+            outline: none;
+
+            border-radius: 14px;
+
+            padding: 15px 18px;
+
+            font-size: 16px;
+
+        }
+
+        textarea {
+
+            resize: vertical;
+            min-height: 140px;
+
+        }
+
+        button {
+
+            border: none;
+
+            cursor: pointer;
+
+            border-radius: 14px;
+
+            padding: 14px;
+
+            font-size: 16px;
+
+            font-weight: 600;
+
+            transition: .3s;
+
+        }
+
+        button:hover {
+
+            transform: translateY(-2px);
+
+        }
+
+        .submit {
+
+            background: #22c55e;
+            color: white;
+
+        }
+
+        .actions {
+
+            margin: 30px 0;
+
+            display: flex;
+
+            gap: 15px;
+
+        }
+
+        .refresh {
+
+            background: #3b82f6;
+            color: white;
+            flex: 1;
+
+        }
+
+        .cleanup {
+
+            background: #ef4444;
+            color: white;
+            flex: 1;
+
+        }
+
+        #status {
+
+            margin-bottom: 20px;
+            color: white;
+            font-weight: 600;
+            text-align: center;
+
+        }
+
+        ul {
+
+            list-style: none;
+
+        }
+
+        li {
+
+            background: white;
+
+            border-radius: 16px;
+
+            padding: 20px;
+
+            margin-bottom: 18px;
+
+            box-shadow: 0 12px 25px rgba(0, 0, 0, .08);
+
+            animation: appear .35s ease;
+
+        }
+
+        .author {
+
+            font-weight: 700;
+
+            color: #4f46e5;
+
+            margin-bottom: 10px;
+
+        }
+
+        .content {
+
+            line-height: 1.6;
+            margin-bottom: 15px;
+            white-space: pre-wrap;
+
+        }
+
+        .meta {
+
+            display: flex;
+
+            justify-content: space-between;
+
+            color: #64748b;
+
+            font-size: 14px;
+
+        }
+
+        .badge {
+
+            background: #eef2ff;
+
+            color: #4338ca;
+
+            padding: 5px 10px;
+
+            border-radius: 20px;
+
+            font-weight: 600;
+
+        }
+
+        .empty {
+
+            text-align: center;
+
+            padding: 50px;
+
+            color: white;
+
+            font-size: 18px;
+
+        }
+
+        @keyframes appear {
+
+            from {
+
+                opacity: 0;
+
+                transform: translateY(15px);
+
+            }
+
+            to {
+
+                opacity: 1;
+
+                transform: translateY(0);
+
+            }
+
+        }
+
+        @media(max-width:700px) {
+
+            .actions {
+
+                flex-direction: column;
+
+            }
+
+            .meta {
+
+                flex-direction: column;
+                gap: 8px;
+
+            }
+
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <div class="container">
+
+        <h1>💬 Mur de Messages Éphémères</h1>
+
+        <p class="subtitle">
+            Publiez un message qui disparaîtra automatiquement après son expiration.
+        </p>
+
+        <form id="messageForm">
+
+            <input id="author" maxlength="80" placeholder="👤 Votre nom" required>
+
+            <textarea id="content" maxlength="1000" placeholder="✍️ Votre message..." required></textarea>
+
+            <input id="ttlSeconds" type="number" min="1" max="86400" value="300" required>
+
+            <button class="submit">
+                🚀 Publier le message
+            </button>
+
+        </form>
+
+        <div class="actions">
+
+            <button id="refreshBtn" class="refresh">
+                🔄 Actualiser
+            </button>
+
+            <button id="cleanupBtn" class="cleanup">
+                🗑 Nettoyer les expirés
+            </button>
+
+        </div>
+
+        <p id="status"></p>
+
+        <ul id="messages"></ul>
+
+    </div>
+
+    <script>
+
+        const statusEl = document.getElementById("status");
+        const messagesEl = document.getElementById("messages");
+
+        async function listMessages() {
+
+            statusEl.textContent = "";
+
+            try {
+
+                const response = await fetch("/api/messages");
+
+                if (!response.ok) {
+
+                    throw new Error();
+
+                }
+
+                const messages = await response.json();
+
+                messagesEl.innerHTML = "";
+
+                if (messages.length === 0) {
+
+                    messagesEl.innerHTML = `
+<div class="empty">
+📭 Aucun message pour le moment
+</div>
+`;
+
+                    return;
+
+                }
+
+                messages.forEach(msg => {
+
+                    const li = document.createElement("li");
+
+                    const expireDate = new Date(msg.expiresAt);
+
+                    const remaining = Math.max(
+                        0,
+                        Math.floor((expireDate - Date.now()) / 1000)
+                    );
+
+                    li.innerHTML = `
+
+<div class="author">
+👤 ${msg.author}
+</div>
+
+<div class="content">
+${msg.content}
+</div>
+
+<div class="meta">
+
+<div>
+⏰ Expire le
+<strong>${expireDate.toLocaleString()}</strong>
+</div>
+
+<div class="badge">
+${remaining}s restantes
+</div>
+
+</div>
+
+`;
+
+                    messagesEl.appendChild(li);
+
+                });
+
+            } catch {
+
+                statusEl.textContent = "❌ Impossible de charger les messages.";
+
+            }
+
+        }
+
+        document.getElementById("messageForm").addEventListener("submit", async (e) => {
+
+            e.preventDefault();
+
+            statusEl.textContent = "";
+
+            const payload = {
+
+                author: document.getElementById("author").value,
+
+                content: document.getElementById("content").value,
+
+                ttlSeconds: Number(document.getElementById("ttlSeconds").value)
+
+            };
+
+            try {
+
+                const response = await fetch("/api/messages", {
+
+                    method: "POST",
+
+                    headers: {
+
+                        "Content-Type": "application/json"
+
+                    },
+
+                    body: JSON.stringify(payload)
+
+                });
+
+                if (!response.ok) {
+
+                    const body = await response.json().catch(() => ({}));
+
+                    statusEl.textContent = body.error || "❌ Impossible d'envoyer le message.";
+
+                    return;
+
+                }
+
+                document.getElementById("content").value = "";
+
+                statusEl.textContent = "✅ Message publié.";
+
+                listMessages();
+
+            } catch {
+
+                statusEl.textContent = "❌ Erreur serveur.";
+
+            }
+
+        });
+
+        document.getElementById("refreshBtn").addEventListener("click", listMessages);
+
+        document.getElementById("cleanupBtn").addEventListener("click", async () => {
+
+            statusEl.textContent = "";
+
+            try {
+
+                const response = await fetch("/api/messages/cleanup", {
+
+                    method: "POST"
+
+                });
+
+                if (!response.ok) {
+
+                    throw new Error();
+
+                }
+
+                statusEl.textContent = "🧹 Nettoyage effectué.";
+
+                listMessages();
+
+            } catch {
+
+                statusEl.textContent = "❌ Impossible de nettoyer.";
+
+            }
+
+        });
+
+        listMessages();
+
+        setInterval(listMessages, 10000);
+
+    </script>
+
+</body>
+
+</html>
