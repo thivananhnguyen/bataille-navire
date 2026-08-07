@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: flotte
+spec:
+  replicas: 1
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - name: worker
+          image: nguyenthivananh/bataille-des-navires-worker@sha256:aa3c87e3524d0867f305a6e80f1a16fea239396ac0486c1dae9f2891581e8b1d
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          ports:
+            - containerPort: 3002
+          resources:
+            requests:
+              cpu: 100m
+              memory: 96Mi
+            limits:
+              cpu: 400m
+              memory: 256Mi
+          env:
+            - name: API_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: API_BASE_URL
+            - name: CLEANUP_INTERVAL_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: CLEANUP_INTERVAL_SECONDS
+            - name: WORKER_PORT
+              value: "3002"
+            - name: TABLEAU_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: TABLEAU_URL
+            - name: GROUPE
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: GROUPE_DISPLAY
+            - name: COULEUR
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: COULEUR
+            - name: SERVICE
+              value: worker
+            - name: VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: TAG
+            - name: URL_INTERNE
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: URL_INTERNE_WORKER
+            - name: PAVILLON_FICHIER
+              valueFrom:
+                configMapKeyRef:
+                  name: flotte-config
+                  key: PAVILLON_FICHIER
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          volumeMounts:
+            - name: pavillon-data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: pavillon-data
+          persistentVolumeClaim:
+            claimName: pavillon-data
+        - name: tmp
+          emptyDir: {}

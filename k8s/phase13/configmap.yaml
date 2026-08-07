@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flotte-config
+  namespace: flotte
+data:
+  REGISTRY: nguyenthivananh
+  GROUPE_SLUG: bataille-des-navires
+  GROUPE_DISPLAY: Bataille des Navires
+  COULEUR: "#0071BC"
+  TABLEAU_URL: ""
+  TAG: dev
+  MESSAGE_TTL_SECONDS: "3600"
+  CLEANUP_INTERVAL_SECONDS: "30"
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: message_db
+  DB_USER: message_user
+  PAVILLON_FICHIER: /data/pavillon.txt
+  API_BASE_URL: http://api:3000
+  URL_INTERNE_API: http://api:3000
+  URL_INTERNE_FRONT: http://front:8080
+  URL_INTERNE_WORKER: http://worker:3002
