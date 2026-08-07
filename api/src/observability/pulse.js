@@ -35,7 +35,7 @@ async function sendPulse(config) {
   let nextDelayMs = 5000;
 
   try {
-    const response = await fetch(`${config.tableauUrl}/api/pouls`, {
+    const response = await fetch(`${config.tableauUrl}/api/pulse`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -59,6 +59,9 @@ async function sendPulse(config) {
       if ((Number(order.coups_a_encaisser) || 0) > 0) {
         await handleIncomingHits(config.internalBaseUrl, order.coups_a_encaisser);
       }
+    } else {
+      const body = await response.text().catch(() => '');
+      console.error(`[pulse] tableau rejected pulse: status=${response.status} body=${body.slice(0, 180)}`);
     }
   } catch (error) {
     console.error(`[pulse] tableau unreachable: ${error.message}`);
