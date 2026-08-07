@@ -120,6 +120,48 @@ jobs:
           printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/id_vm_prod
           chmod 600 ~/.ssh/id_vm_prod
 
+      - name: Ensure local vm-prod is running (when target is localhost)
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: |
+          set -euo pipefail
+          vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
+          if [[ "$vm_host" == "127.0.0.1" || "$vm_host" == "localhost" ]]; then
+            if command -v docker >/dev/null 2>&1 && docker ps -a --format '{{.Names}}' | grep -qx 'vm-prod'; then
+              docker start vm-prod >/dev/null 2>&1 || true
+              echo "vm-prod start attempted on local runner"
+            else
+              echo "vm-prod container not found locally; continuing with remote host checks"
+            fi
+          fi
+
+      - name: Diagnose SSH reachability
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+        run: |
+          set -euo pipefail
+          vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
+          vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
+          gateway_ip="$(ip route | awk '/default/ {print $3; exit}' || true)"
+
+          candidates=("$vm_host")
+          if [[ "$vm_host" == "127.0.0.1" || "$vm_host" == "localhost" ]]; then
+            candidates+=("127.0.0.1" "localhost" "host.docker.internal")
+            if [[ -n "$gateway_ip" ]]; then
+              candidates+=("$gateway_ip")
+            fi
+          fi
+
+          echo "SSH reachability pre-check on port $vm_port"
+          for host in "${candidates[@]}"; do
+            if timeout 3 bash -c "cat < /dev/null > /dev/tcp/$host/$vm_port" 2>/dev/null; then
+              echo "reachable: $host:$vm_port"
+            else
+              echo "not reachable: $host:$vm_port"
+            fi
+          done
+
       - name: Add VM host key
         env:
           VM_HOST: ${{ secrets.VM_HOST }}
@@ -134,21 +176,42 @@ jobs:
             exit 1
           fi
 
-          # Retry because keyscan can fail briefly while runner/VM networking is warming up.
-          ok=0
-          for i in 1 2 3 4 5; do
-            if ssh-keyscan -T 5 -p "$vm_port" "$vm_host" >> ~/.ssh/known_hosts 2>/dev/null; then
-              ok=1
+          gateway_ip="$(ip route | awk '/default/ {print $3; exit}' || true)"
+
+          candidates=("$vm_host")
+          if [[ "$vm_host" == "127.0.0.1" || "$vm_host" == "localhost" ]]; then
+            candidates+=("127.0.0.1" "localhost" "host.docker.internal")
+            if [[ -n "$gateway_ip" ]]; then
+              candidates+=("$gateway_ip")
+            fi
+          fi
+
+          selected_host=""
+          for host in "${candidates[@]}"; do
+            ok=0
+            for i in 1 2 3 4 5; do
+              if ssh-keyscan -T 5 -p "$vm_port" "$host" >> ~/.ssh/known_hosts 2>/dev/null; then
+                ok=1
+                selected_host="$host"
+                break
+              fi
+              echo "ssh-keyscan attempt $i failed for ${host}:${vm_port}, retrying..."
+              sleep 2
+            done
+            if [[ "$ok" -eq 1 ]]; then
               break
             fi
-            echo "ssh-keyscan attempt $i failed for ${vm_host}:${vm_port}, retrying..."
-            sleep 2
           done
 
-          if [[ "$ok" -ne 1 ]]; then
-            echo "Unable to fetch host key from ${vm_host}:${vm_port}. Check VM_HOST/VM_PORT and runner network access."
+          if [[ -z "$selected_host" ]]; then
+            echo "Unable to fetch host key. Tried hosts: ${candidates[*]} on port ${vm_port}."
+            echo "Check runner network namespace and VM_HOST/VM_PORT secrets."
             exit 1
           fi
+
+          echo "Using deploy host: $selected_host"
+          echo "DEPLOY_VM_HOST=$selected_host" >> "$GITHUB_ENV"
+          echo "DEPLOY_VM_PORT=$vm_port" >> "$GITHUB_ENV"
 
       - name: Prepare deploy env file
         env:
@@ -194,14 +257,17 @@ jobs:
 
       - name: Upload compose and env to VM
         env:
-          VM_HOST: ${{ secrets.VM_HOST }}
-          VM_PORT: ${{ secrets.VM_PORT }}
           VM_USER: ${{ secrets.VM_USER }}
         run: |
           set -euo pipefail
-          vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
-          vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
+          vm_host="$(printf '%s' "${DEPLOY_VM_HOST:-}" | tr -d '[:space:]')"
+          vm_port="$(printf '%s' "${DEPLOY_VM_PORT:-}" | tr -d '[:space:]')"
           vm_user="$(printf '%s' "$VM_USER" | tr -d '[:space:]')"
+
+          if [[ -z "$vm_host" || -z "$vm_port" ]]; then
+            echo "DEPLOY_VM_HOST/DEPLOY_VM_PORT is empty. Add VM host key step did not complete."
+            exit 1
+          fi
 
           ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" 'mkdir -p /srv/flotte'
           scp -i ~/.ssh/id_vm_prod -P "$vm_port" -o StrictHostKeyChecking=accept-new compose.prod.yml "$vm_user@$vm_host:/srv/flotte/compose.prod.yml"
@@ -209,14 +275,17 @@ jobs:
 
       - name: Deploy full fleet on VM
         env:
-          VM_HOST: ${{ secrets.VM_HOST }}
-          VM_PORT: ${{ secrets.VM_PORT }}
           VM_USER: ${{ secrets.VM_USER }}
         run: |
           set -euo pipefail
-          vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
-          vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
+          vm_host="$(printf '%s' "${DEPLOY_VM_HOST:-}" | tr -d '[:space:]')"
+          vm_port="$(printf '%s' "${DEPLOY_VM_PORT:-}" | tr -d '[:space:]')"
           vm_user="$(printf '%s' "$VM_USER" | tr -d '[:space:]')"
+
+          if [[ -z "$vm_host" || -z "$vm_port" ]]; then
+            echo "DEPLOY_VM_HOST/DEPLOY_VM_PORT is empty. Add VM host key step did not complete."
+            exit 1
+          fi
 
           ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" '
             set -euo pipefail
@@ -228,14 +297,17 @@ jobs:
 
       - name: Verify deployed services
         env:
-          VM_HOST: ${{ secrets.VM_HOST }}
-          VM_PORT: ${{ secrets.VM_PORT }}
           VM_USER: ${{ secrets.VM_USER }}
         run: |
           set -euo pipefail
-          vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
-          vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
+          vm_host="$(printf '%s' "${DEPLOY_VM_HOST:-}" | tr -d '[:space:]')"
+          vm_port="$(printf '%s' "${DEPLOY_VM_PORT:-}" | tr -d '[:space:]')"
           vm_user="$(printf '%s' "$VM_USER" | tr -d '[:space:]')"
+
+          if [[ -z "$vm_host" || -z "$vm_port" ]]; then
+            echo "DEPLOY_VM_HOST/DEPLOY_VM_PORT is empty. Add VM host key step did not complete."
+            exit 1
+          fi
 
           ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" '
             set -euo pipefail
