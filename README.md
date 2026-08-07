@@ -225,3 +225,21 @@ Contexte:
 
 ### Note utile
 - Un essai de deconnexion/reconnexion reseau API a parfois fait perdre l'alias reseau `api` sur ce poste local. Ce cas est garde comme observation de debug, mais il n'est pas utilise pour le chronometrage principal afin de garder des mesures reproductibles.
+
+## Phase 10 - Runbook de la flotte
+
+Objectif couvert:
+- Document exploitable par une autre equipe sans contexte oral.
+- Procedure de remontee de flotte depuis zero.
+- Premiere triade de diagnostic quand un carre s'eteint.
+- Tableau des 6 pannes avec symptome/cause/manoeuvre/temps.
+
+Livrable cree:
+- `RUNBOOK_FLOTTE.md`
+
+Etat actuel:
+- Projet de groupe (Make + Thi Van Anh).
+- Le runbook couvre deux parcours: debug local Docker Compose et debug CI/VM (runner + vm-prod).
+- Passation interne non realisee pour le moment (section prete a etre completee).
+- Validation externe (autre equipage) en attente.
+
