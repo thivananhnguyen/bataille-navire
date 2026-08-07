@@ -205,3 +205,23 @@ REQUESTS=500 CONCURRENCY=40 FRONT_PORT=8080 ./scripts/phase8_measure.sh
 2. Envoyer des salves tableau en `api=1`, noter le point de bascule pale.
 3. Passer en `api=3` (`docker compose -f compose.prod.yml --env-file .env up -d --scale api=3`) et refaire la meme salve.
 4. Noter les deltas dans le carnet (avant/apres) et garder aussi les chiffres decevants.
+
+## Journal de bord Phase 9 - Tirage et manoeuvre (2026-08-07)
+
+Contexte:
+- Stack locale: `api=1`, `front=1`, `worker=1`, `postgres=1`
+- Sonde utilisee pour valider le retour: `GET /api/messages` via le front local (`http://127.0.0.1:8080`)
+
+### Entrees de journal (une ligne par panne testee)
+
+| Incident | Symptome observe | Cause trouvee | Action de remediation | Resultat | Chronometrage |
+| :---- | :---- | :---- | :---- | :---- | :---- |
+| Redemarrage API | `GET /api/messages` ne repond plus pendant le redemarrage | Process API interrompu | `docker restart <api_container>` | Retour a `200` | Retour `200`: 1s, manoeuvre totale: 2s |
+| Redemarrage PostgreSQL | Erreurs temporaires cote API (indisponibilite DB) | PostgreSQL non disponible pendant restart | `docker restart <postgres_container>` | Retour a `200` | Retour `200`: 1s, manoeuvre totale: 1s |
+| Pause puis reprise API | Micro-coupure volontaire pendant la pause | Process fige par `docker pause` | `docker unpause <api_container>` | `200` immediat apres reprise | Retour `200`: 0s, manoeuvre totale: 6s |
+| Pause worker | Worker suspendu (impact direct limite sur `/api/messages`) | Conteneur worker mis en pause | `docker unpause <worker_container>` | Worker repris, service principal reste accessible | Non chronometre |
+| Redemarrage front | `GET /health` passe temporairement en erreur pendant reboot | Process front redemarre | `docker restart <front_container>` | `GET /health` revient a `200` | Non chronometre |
+| Kill worker puis relance | Worker arrete brutalement | Process tue (`docker kill`) | `docker start <worker_container>` | Recuperation confirmee apres relance manuelle | Non chronometre |
+
+### Note utile
+- Un essai de deconnexion/reconnexion reseau API a parfois fait perdre l'alias reseau `api` sur ce poste local. Ce cas est garde comme observation de debug, mais il n'est pas utilise pour le chronometrage principal afin de garder des mesures reproductibles.
