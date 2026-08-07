@@ -13,9 +13,10 @@ app.use(cors());
 app.use(metricsMiddleware);
 app.use(express.json({ limit: '16kb' }));
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+const healthController = require('./controllers/healthController');
+
+app.get('/health', healthController.getHealth);
+app.post('/pavillon', express.text({ type: '*/*', limit: '16kb' }), healthController.postPavillon);
 
 app.get('/travail', messagesController.processWork);
 
