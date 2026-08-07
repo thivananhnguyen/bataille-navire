@@ -139,8 +139,9 @@ jobs:
           deploy_mode="$(printf '%s' "${DEPLOY_MODE:-ssh}" | tr -d '[:space:]')"
 
           if [[ "$deploy_mode" == "docker_local" ]]; then
-            docker exec vm-prod mkdir -p /srv/flotte
+            docker exec vm-prod sh -lc 'mkdir -p /srv/flotte && rm -rf /srv/flotte/observability'
             docker cp compose.prod.yml vm-prod:/srv/flotte/compose.prod.yml
+            docker cp observability vm-prod:/srv/flotte/observability
             echo "Compose file copied via local Docker fallback"
             exit 0
           fi
@@ -149,8 +150,9 @@ jobs:
           vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
           vm_user="$(printf '%s' "$VM_USER" | tr -d '[:space:]')"
 
-          ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" 'mkdir -p /srv/flotte'
+          ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" 'mkdir -p /srv/flotte && rm -rf /srv/flotte/observability'
           scp -i ~/.ssh/id_vm_prod -P "$vm_port" -o StrictHostKeyChecking=accept-new compose.prod.yml "$vm_user@$vm_host:/srv/flotte/compose.prod.yml"
+          scp -i ~/.ssh/id_vm_prod -P "$vm_port" -o StrictHostKeyChecking=accept-new -r observability "$vm_user@$vm_host:/srv/flotte/observability"
 
       - name: Remplacer la flotte
         env:
