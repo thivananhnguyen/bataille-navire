@@ -1,5 +1,8 @@
 # Bataille des Navires
 
+[![Deploy](https://github.com/thivananhnguyen/bataille-navire/actions/workflows/deploy.yml/badge.svg)](https://github.com/thivananhnguyen/bataille-navire/actions/workflows/deploy.yml)
+[![Verify](https://github.com/thivananhnguyen/bataille-navire/actions/workflows/verify.yml/badge.svg)](https://github.com/thivananhnguyen/bataille-navire/actions/workflows/verify.yml)
+
 ## Team
 - Nom: Bataille des Navires
 - Couleur: #0071BC
@@ -295,5 +298,34 @@ Etat actuel:
 - Metriques HTTP + histogramme de `/travail` disponibles sur les 3 services.
 - Metrique `service_dependency_up` disponible pour distinguer dependances KO/OK.
 - Dashboard exporte et versionne dans le repo.
+
+## Phase 12 - Quatre panneaux de diagnostic
+
+Objectif couvert:
+- Nommer une panne sans ouvrir un terminal, avec 4 panneaux maximum.
+- Repondre en moins de 10 secondes aux 4 questions de phase 12:
+	1. Le service recoit-il du trafic ?
+	2. Repond-il, et avec quelle latence ?
+	3. Ses dependances sont-elles en etat OK ?
+	4. La version tournee est-elle celle attendue ?
+
+Livrable cree:
+- `observability/grafana/dashboards/bataille-navire-phase12.json`
+
+Panneaux retenus (dashboard phase 12):
+- Trafic recu: `sum(rate(service_hits_handled_total[1m])) by (service)`
+- Reponse /travail (latence p95): `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{route="/travail"}[5m])) by (job, le))`
+- Etat dependances (0/1): `avg(service_dependency_up) by (service, dependency)`
+- Version deployee par service: `max(service_build_info) by (service, version)`
+
+Instrumentation supplementaire phase 12:
+- Nouvelle metrique `service_build_info{service,version}` exposee sur `api`, `front`, `worker`.
+
+Validation rapide:
+```bash
+curl -s http://127.0.0.1:19090/api/v1/query?query=max(service_build_info)%20by%20(service,version)
+curl -s http://127.0.0.1:19090/api/v1/query?query=sum(rate(service_hits_handled_total%5B1m%5D))%20by%20(service)
+curl -s http://127.0.0.1:19090/api/v1/query?query=avg(service_dependency_up)%20by%20(service,dependency)
+```
 
 
