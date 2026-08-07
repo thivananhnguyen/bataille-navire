@@ -8,5 +8,6 @@
 # Local ignores (keep for working tree hygiene)
 node_modules/
 .env
-.env.*
+.env.images
+.env.vm
 api/.env
