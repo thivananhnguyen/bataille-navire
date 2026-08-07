@@ -95,6 +95,38 @@ jobs:
           printf '%s\n' "$VM_SSH_KEY" | tr -d '\r' > ~/.ssh/id_vm_prod
           chmod 600 ~/.ssh/id_vm_prod
 
+      - name: Select deploy transport
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+        run: |
+          set -euo pipefail
+          vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
+          vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
+
+          if [[ "$vm_host" == "127.0.0.1" || "$vm_host" == "localhost" ]]; then
+            if command -v docker >/dev/null 2>&1 && docker ps -a --format '{{.Names}}' | grep -qx 'vm-prod'; then
+              docker start vm-prod >/dev/null 2>&1 || true
+            fi
+          fi
+
+          if timeout 3 bash -c "cat < /dev/null > /dev/tcp/$vm_host/$vm_port" 2>/dev/null; then
+            echo "DEPLOY_MODE=ssh" >> "$GITHUB_ENV"
+            echo "DEPLOY_VM_HOST=$vm_host" >> "$GITHUB_ENV"
+            echo "DEPLOY_VM_PORT=$vm_port" >> "$GITHUB_ENV"
+            echo "Deploy mode: ssh ($vm_host:$vm_port)"
+            exit 0
+          fi
+
+          if command -v docker >/dev/null 2>&1 && docker ps -a --format '{{.Names}}' | grep -qx 'vm-prod'; then
+            echo "DEPLOY_MODE=docker_local" >> "$GITHUB_ENV"
+            echo "Deploy mode: docker_local (vm-prod)"
+            exit 0
+          fi
+
+          echo "Cannot reach SSH target ${vm_host}:${vm_port} and no local vm-prod fallback available."
+          exit 1
+
       - name: Envoyer la description de la flotte
         env:
           VM_HOST: ${{ secrets.VM_HOST }}
@@ -102,6 +134,15 @@ jobs:
           VM_USER: ${{ secrets.VM_USER }}
         run: |
           set -euo pipefail
+          deploy_mode="$(printf '%s' "${DEPLOY_MODE:-ssh}" | tr -d '[:space:]')"
+
+          if [[ "$deploy_mode" == "docker_local" ]]; then
+            docker exec vm-prod mkdir -p /srv/flotte
+            docker cp compose.prod.yml vm-prod:/srv/flotte/compose.prod.yml
+            echo "Compose file copied via local Docker fallback"
+            exit 0
+          fi
+
           vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
           vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
           vm_user="$(printf '%s' "$VM_USER" | tr -d '[:space:]')"
@@ -118,6 +159,7 @@ jobs:
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
         run: |
           set -euo pipefail
+          deploy_mode="$(printf '%s' "${DEPLOY_MODE:-ssh}" | tr -d '[:space:]')"
           vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
           vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
           vm_user="$(printf '%s' "$VM_USER" | tr -d '[:space:]')"
@@ -138,6 +180,18 @@ jobs:
             echo "CLEANUP_INTERVAL_SECONDS=${CLEANUP_INTERVAL_SECONDS}"
           } > .deploy.env
 
+          if [[ "$deploy_mode" == "docker_local" ]]; then
+            docker cp .deploy.env vm-prod:/srv/flotte/.env
+            docker exec vm-prod sh -lc '
+              set -euo pipefail
+              cd /srv/flotte
+              docker compose -f compose.prod.yml --env-file .env pull
+              docker compose -f compose.prod.yml --env-file .env up -d
+            '
+            echo "Deployed via local Docker fallback"
+            exit 0
+          fi
+
           scp -i ~/.ssh/id_vm_prod -P "$vm_port" -o StrictHostKeyChecking=accept-new .deploy.env "$vm_user@$vm_host:/srv/flotte/.env"
 
           ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" '
@@ -155,10 +209,27 @@ jobs:
           FRONT_PORT: ${{ vars.FRONT_PORT }}
         run: |
           set -euo pipefail
+          deploy_mode="$(printf '%s' "${DEPLOY_MODE:-ssh}" | tr -d '[:space:]')"
           vm_host="$(printf '%s' "$VM_HOST" | tr -d '[:space:]')"
           vm_port="$(printf '%s' "$VM_PORT" | tr -d '[:space:]')"
           vm_user="$(printf '%s' "$VM_USER" | tr -d '[:space:]')"
           front_port="$(printf '%s' "${FRONT_PORT:-8080}" | tr -d '[:space:]')"
+
+          if [[ "$deploy_mode" == "docker_local" ]]; then
+            docker exec -e FRONT_PORT="$front_port" vm-prod sh -lc '
+              set -euo pipefail
+              cd /srv/flotte
+
+              timeout 30 bash -c "until wget -q -O- http://localhost:${FRONT_PORT}/ >/dev/null; do sleep 2; done"
+              timeout 30 bash -c "until docker compose -f compose.prod.yml --env-file .env exec -T api wget -q -O- http://localhost:3000/health >/dev/null; do sleep 2; done"
+              timeout 30 bash -c "until docker compose -f compose.prod.yml --env-file .env exec -T worker wget -q -O- http://localhost:3002/health >/dev/null; do sleep 2; done"
+              timeout 30 bash -c "until docker compose -f compose.prod.yml --env-file .env exec -T postgres pg_isready -U message_user -d message_db >/dev/null; do sleep 2; done"
+
+              docker compose -f compose.prod.yml --env-file .env ps
+            '
+            echo "Verified via local Docker fallback"
+            exit 0
+          fi
 
           ssh -i ~/.ssh/id_vm_prod -p "$vm_port" -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$vm_user@$vm_host" "
             set -euo pipefail
