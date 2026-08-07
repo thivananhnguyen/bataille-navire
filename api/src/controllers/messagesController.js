@@ -1,6 +1,11 @@
 const asyncHandler = require('../utils/asyncHandler');
 const messageModel = require('../models/message');
-const { incrementMessagesCreated, addExpiredCleanupCount } = require('../observability/metrics');
+const {
+  incrementMessagesCreated,
+  addExpiredCleanupCount,
+  addHitsHandled,
+  setDependencyStatus,
+} = require('../observability/metrics');
 const { recordHandled } = require('../observability/pulse');
 
 const createMessage = asyncHandler(async (req, res) => {
@@ -29,9 +34,12 @@ const cleanupExpiredMessages = asyncHandler(async (req, res) => {
 const processWork = asyncHandler(async (req, res) => {
   try {
     const workResult = await messageModel.performWork();
+    setDependencyStatus('postgres', true);
+    addHitsHandled(1);
     recordHandled(1);
     return res.json({ status: 'ok', ...workResult });
   } catch (error) {
+    setDependencyStatus('postgres', false);
     return res.status(503).json({ status: 'unavailable', error: 'work dependency unavailable' });
   }
 });

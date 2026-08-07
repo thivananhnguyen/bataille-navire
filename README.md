@@ -205,3 +205,95 @@ REQUESTS=500 CONCURRENCY=40 FRONT_PORT=8080 ./scripts/phase8_measure.sh
 2. Envoyer des salves tableau en `api=1`, noter le point de bascule pale.
 3. Passer en `api=3` (`docker compose -f compose.prod.yml --env-file .env up -d --scale api=3`) et refaire la meme salve.
 4. Noter les deltas dans le carnet (avant/apres) et garder aussi les chiffres decevants.
+
+## Journal de bord Phase 9 - Tirage et manoeuvre (2026-08-07)
+
+Contexte:
+- Stack locale: `api=1`, `front=1`, `worker=1`, `postgres=1`
+- Sonde utilisee pour valider le retour: `GET /api/messages` via le front local (`http://127.0.0.1:8080`)
+
+### Entrees de journal (une ligne par panne testee)
+
+| Incident | Symptome observe | Cause trouvee | Action de remediation | Resultat | Chronometrage |
+| :---- | :---- | :---- | :---- | :---- | :---- |
+| Redemarrage API | `GET /api/messages` ne repond plus pendant le redemarrage | Process API interrompu | `docker restart <api_container>` | Retour a `200` | Retour `200`: 1s, manoeuvre totale: 2s |
+| Redemarrage PostgreSQL | Erreurs temporaires cote API (indisponibilite DB) | PostgreSQL non disponible pendant restart | `docker restart <postgres_container>` | Retour a `200` | Retour `200`: 1s, manoeuvre totale: 1s |
+| Pause puis reprise API | Micro-coupure volontaire pendant la pause | Process fige par `docker pause` | `docker unpause <api_container>` | `200` immediat apres reprise | Retour `200`: 0s, manoeuvre totale: 3s |
+| Pause worker | Worker suspendu (impact direct limite sur `/api/messages`) | Conteneur worker mis en pause | `docker unpause <worker_container>` | Worker repris, service principal reste accessible | Non chronometre |
+| Redemarrage front | `GET /health` passe temporairement en erreur pendant reboot | Process front redemarre | `docker restart <front_container>` | `GET /health` revient a `200` | Non chronometre |
+| Kill worker puis relance | Worker arrete brutalement | Process tue (`docker kill`) | `docker start <worker_container>` | Recuperation confirmee apres relance manuelle | Non chronometre |
+
+### Note utile
+- Un essai de deconnexion/reconnexion reseau API a parfois fait perdre l'alias reseau `api` sur ce poste local. Ce cas est garde comme observation de debug, mais il n'est pas utilise pour le chronometrage principal afin de garder des mesures reproductibles.
+- Mesure (2026-08-07): incidents chronometres executes en local via script shell (`restart api`, `restart postgres`, `pause/unpause api`) pour mise a jour rapide du journal.
+
+## Phase 10 - Runbook de la flotte
+
+Objectif couvert:
+- Document exploitable par une autre equipe sans contexte oral.
+- Procedure de remontee de flotte depuis zero.
+- Premiere triade de diagnostic quand un carre s'eteint.
+- Tableau des 6 pannes avec symptome/cause/manoeuvre/temps.
+
+Livrable cree:
+- `RUNBOOK_FLOTTE.md`
+
+Etat actuel:
+- Projet de groupe (Make + Thi Van Anh).
+- Le runbook couvre deux parcours: debug local Docker Compose et debug CI/VM (runner + vm-prod).
+- Passation interne non realisee pour le moment (section prete a etre completee).
+- Validation externe (autre equipage) en attente.
+
+## Phase 11 - Mesure branchee sur la flotte
+
+Objectif couvert:
+- Chaque service de la flotte expose ses metriques (`api`, `front`, `worker`).
+- Prometheus est configure pour scraper les trois services.
+- La definition du dashboard Grafana est versionnee en JSON dans le repo.
+
+Fichiers ajoutes/modifies:
+- `compose.prod.yml`: services `prometheus` et `grafana`
+- `observability/prometheus/prometheus.yml`: cibles de scrape
+- `observability/grafana/provisioning/datasources/prometheus.yml`: datasource pre-provisionnee
+- `observability/grafana/provisioning/dashboards/dashboard.yml`: provider dashboards
+- `observability/grafana/dashboards/bataille-navire-phase11.json`: export dashboard
+- `front/server.js`: endpoint `/metrics` + instrumentation `/travail`
+- `worker/src/index.js`: endpoint `/metrics` + instrumentation `/travail`
+- `api/src/observability/metrics.js`: `service_hits_handled_total`, `service_dependency_up`
+- `api/src/controllers/messagesController.js`: remontee d'etat de dependance DB
+
+Lancement local (phase 11):
+```bash
+docker compose -f compose.prod.yml --env-file .env up -d postgres api worker front prometheus grafana
+```
+
+Verification rapide:
+```bash
+curl -s http://127.0.0.1:9090/api/v1/targets | grep -E 'api:3000|front:8080|worker:3002'
+curl -s http://127.0.0.1:8080/metrics | head -n 20
+curl -s http://127.0.0.1:3002/metrics | head -n 20
+```
+
+Metriques ciblees (J3 + Phase 11):
+- Metriques J3 conservees:
+	- Disponibilite cible (up):
+		- `up{job=~"api|front|worker"}`
+	- Debit HTTP (requetes par seconde):
+		- `sum(rate(http_requests_total[1m])) by (job, route)`
+	- Latence p95 (histogramme):
+		- `histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (job, le))`
+- Coups encaisses par service et par seconde:
+	- `sum(rate(service_hits_handled_total[1m])) by (service)`
+- Duree de `/travail` en histogramme (buckets), pour ne pas masquer les pics:
+	- `sum(rate(http_request_duration_seconds_bucket{route="/travail"}[1m])) by (job, le)`
+- Nombre d'exemplaires repondants par service:
+	- `sum(up{job=~"api|front|worker"}) by (job)`
+- Etat de dependance par service en 0/1:
+	- `avg(service_dependency_up) by (service, dependency)`
+
+Etat actuel:
+- Metriques HTTP + histogramme de `/travail` disponibles sur les 3 services.
+- Metrique `service_dependency_up` disponible pour distinguer dependances KO/OK.
+- Dashboard exporte et versionne dans le repo.
+
+
