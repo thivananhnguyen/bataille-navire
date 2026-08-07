@@ -8,6 +8,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 RUN addgroup -S app && adduser -S app -G app
+RUN mkdir -p /data && chown app:app /data
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY src ./src
