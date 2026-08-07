@@ -3,6 +3,8 @@ const http = require('http');
 const apiBaseUrl = process.env.API_BASE_URL || 'http://api:3000';
 const cleanupIntervalSeconds = Number.parseInt(process.env.CLEANUP_INTERVAL_SECONDS || '30', 10);
 const workerPort = Number.parseInt(process.env.WORKER_PORT || '3002', 10);
+const tableauUrl = process.env.TABLEAU_URL || '';
+const groupDisplay = process.env.GROUPE_DISPLAY || '';
 
 let lastCleanupAt = null;
 let lastCleanupDeleted = 0;
@@ -56,5 +58,11 @@ const server = http.createServer((req, res) => {
 
 server.listen(workerPort, () => {
   console.log(`[worker] listening on ${workerPort}`);
+  if (!tableauUrl) {
+    console.warn('[worker] TABLEAU_URL is empty: tableau pulse is disabled for worker.');
+  }
+  if (!groupDisplay) {
+    console.warn('[worker] GROUPE_DISPLAY is empty: tableau identity is incomplete.');
+  }
   scheduleCleanup();
 });
