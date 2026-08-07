@@ -1,8 +1,13 @@
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
 process.env.DB_HOST = process.env.DB_HOST || 'localhost';
 process.env.DB_PORT = process.env.DB_PORT || '5432';
 process.env.DB_USER = process.env.DB_USER || 'message_user';
 process.env.DB_PASSWORD = process.env.DB_PASSWORD || 'test_password';
 process.env.DB_NAME = process.env.DB_NAME || 'message_test';
+process.env.PAVILLON_FICHIER = process.env.PAVILLON_FICHIER || path.join(os.tmpdir(), 'bataille-navire-test-pavillon.txt');
 
 const request = require('supertest');
 const { resetMetrics } = require('../../src/observability/metrics');
@@ -21,6 +26,7 @@ describe('Message API unit behavior', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resetMetrics();
+    fs.rmSync(process.env.PAVILLON_FICHIER, { force: true });
   });
 
   test('GET /health returns service status', async () => {
@@ -39,6 +45,34 @@ describe('Message API unit behavior', () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ status: 'ok', activeMessages: 2 });
     expect(messageModel.performWork).toHaveBeenCalledTimes(1);
+  });
+
+  test('POST /pavillon writes file and returns 201', async () => {
+    const response = await request(app)
+      .post('/pavillon')
+      .send({ pavillon: 'On coule pas, on plie' });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ status: 'created', pavillon: 'On coule pas, on plie' });
+    expect(fs.readFileSync(process.env.PAVILLON_FICHIER, 'utf8').trim()).toBe('On coule pas, on plie');
+  });
+
+  test('POST /pavillon returns 400 when message is empty', async () => {
+    const response = await request(app)
+      .post('/pavillon')
+      .send({ pavillon: '   ' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('pavillon message is required');
+  });
+
+  test('POST /pavillon returns 400 when message is too long', async () => {
+    const response = await request(app)
+      .post('/pavillon')
+      .send({ pavillon: 'x'.repeat(141) });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('pavillon must be 140 characters or fewer');
   });
 
   test('POST /api/messages creates a message', async () => {

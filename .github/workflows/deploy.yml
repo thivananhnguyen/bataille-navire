@@ -8,8 +8,8 @@ on:
 
 env:
   REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
-  GROUPE_SLUG: ${{ vars.GROUPE_SLUG || 'make-thivananh' }}
-  GROUPE_DISPLAY: ${{ vars.GROUPE_DISPLAY || 'Make-ThiVanAnh' }}
+  GROUPE_SLUG: ${{ vars.GROUPE_SLUG || 'bataille-des-navires' }}
+  GROUPE_DISPLAY: ${{ vars.GROUPE_DISPLAY || 'Bataille des Navires' }}
   COULEUR: ${{ vars.COULEUR || '#0071BC' }}
   TABLEAU_URL: ${{ vars.TABLEAU_URL || '' }}
   FRONT_PORT: ${{ vars.FRONT_PORT || '8080' }}
@@ -44,7 +44,7 @@ jobs:
           context: ./front
           file: ./front/Dockerfile
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.GROUPE_SLUG || 'make-thivananh' }}-front:${{ github.sha }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.GROUPE_SLUG || 'bataille-des-navires' }}-front:${{ github.sha }}
 
       - name: Build and push api image
         uses: docker/build-push-action@v6
@@ -52,7 +52,7 @@ jobs:
           context: ./api
           file: ./api/Dockerfile
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.GROUPE_SLUG || 'make-thivananh' }}-api:${{ github.sha }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.GROUPE_SLUG || 'bataille-des-navires' }}-api:${{ github.sha }}
 
       - name: Build and push worker image
         uses: docker/build-push-action@v6
@@ -60,7 +60,7 @@ jobs:
           context: ./worker
           file: ./worker/Dockerfile
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.GROUPE_SLUG || 'make-thivananh' }}-worker:${{ github.sha }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.GROUPE_SLUG || 'bataille-des-navires' }}-worker:${{ github.sha }}
 
   deploy:
     needs: [build]
