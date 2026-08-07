@@ -50,9 +50,19 @@ async function cleanupExpiredMessages() {
   return result.rowCount;
 }
 
+async function performWork() {
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS active_count
+     FROM messages
+     WHERE expires_at > NOW()`
+  );
+  return result.rows[0].active_count;
+}
+
 module.exports = {
   initializeMessageTable,
   createMessage,
   getActiveMessages,
   cleanupExpiredMessages,
+  performWork,
 };

@@ -11,6 +11,7 @@ jest.mock('../../src/models/message', () => ({
   createMessage: jest.fn(),
   getActiveMessages: jest.fn(),
   cleanupExpiredMessages: jest.fn(),
+  performWork: jest.fn(),
 }));
 
 const messageModel = require('../../src/models/message');
@@ -28,6 +29,16 @@ describe('Message API unit behavior', () => {
     expect(response.status).toBe(200);
     expect(response.body.status).toBe('ok');
     expect(typeof response.body.timestamp).toBe('string');
+  });
+
+  test('GET /travail returns work status', async () => {
+    messageModel.performWork.mockResolvedValue(2);
+
+    const response = await request(app).get('/travail');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: 'ok', activeMessages: 2 });
+    expect(messageModel.performWork).toHaveBeenCalledTimes(1);
   });
 
   test('POST /api/messages creates a message', async () => {

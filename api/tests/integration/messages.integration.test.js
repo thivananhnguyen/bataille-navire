@@ -61,4 +61,16 @@ describe('Message API integration with PostgreSQL', () => {
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('author is required');
   });
+
+  test('travail endpoint returns active message count', async () => {
+    await request(app)
+      .post('/api/messages')
+      .send({ author: 'Bob', content: 'working', ttlSeconds: 120 });
+
+    const response = await request(app).get('/travail');
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('ok');
+    expect(response.body.activeMessages).toBe(1);
+  });
 });

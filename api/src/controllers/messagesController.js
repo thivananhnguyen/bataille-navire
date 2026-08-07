@@ -1,6 +1,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const messageModel = require('../models/message');
 const { incrementMessagesCreated, addExpiredCleanupCount } = require('../observability/metrics');
+const { recordHandled } = require('../observability/pulse');
 
 const createMessage = asyncHandler(async (req, res) => {
   const expiresAt = new Date(Date.now() + req.validatedMessage.ttlSeconds * 1000);
@@ -25,8 +26,15 @@ const cleanupExpiredMessages = asyncHandler(async (req, res) => {
   return res.json({ deleted });
 });
 
+const processWork = asyncHandler(async (req, res) => {
+  const activeMessages = await messageModel.performWork();
+  recordHandled(1);
+  return res.json({ status: 'ok', activeMessages });
+});
+
 module.exports = {
   createMessage,
   getMessages,
   cleanupExpiredMessages,
+  processWork,
 };
