@@ -1,0 +1,73 @@
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - main
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: message_test
+          POSTGRES_USER: message_user
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U message_user -d message_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      NODE_ENV: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_USER: message_user
+      DB_PASSWORD: ""
+      DB_NAME: message_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+
+      - name: Basic repository sanity checks
+        run: |
+          set -euo pipefail
+          test -f README.md
+          test -f .gitignore
+          test -f api/package.json
+          echo "Repository sanity checks passed."
+
+      - name: Fail on obvious hardcoded secret patterns
+        run: |
+          set -euo pipefail
+          patterns='BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|-----BEGIN|dockerhub_token\s*[:=]\s*.+|vm_ssh_key\s*[:=]\s*.+'
+          # Scan tracked files only to avoid false positives from dependencies.
+          if git grep -nEI "$patterns" -- . ':(exclude).github/workflows/*.yml' ':(exclude).env.example' ; then
+            echo "Potential hardcoded secret detected in tracked files."
+            exit 1
+          fi
+          echo "No obvious hardcoded secrets found."
+
+      - name: Install backend dependencies
+        working-directory: api
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: api
+        run: npm test
+
+      - name: Run integration tests
+        working-directory: api
+        run: npm run test:integration
