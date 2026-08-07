@@ -131,18 +131,30 @@ jobs:
       - name: Prepare deploy env file
         env:
           REGISTRY: ${{ secrets.DOCKERHUB_USERNAME }}
-          GROUPE_SLUG: ${{ vars.GROUPE_SLUG || 'make-thivananh' }}
-          GROUPE_DISPLAY: ${{ vars.GROUPE_DISPLAY || 'Make-ThiVanAnh' }}
-          COULEUR: ${{ vars.COULEUR || '#0071BC' }}
+          GROUPE_SLUG: ${{ vars.GROUPE_SLUG }}
+          GROUPE_DISPLAY: ${{ vars.GROUPE_DISPLAY }}
+          COULEUR: ${{ vars.COULEUR }}
           TAG: ${{ github.sha }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          TABLEAU_URL: ${{ vars.TABLEAU_URL || '' }}
-          FRONT_PORT: ${{ vars.FRONT_PORT || '8080' }}
-          MESSAGE_TTL_SECONDS: ${{ vars.MESSAGE_TTL_SECONDS || '3600' }}
-          CLEANUP_INTERVAL_SECONDS: ${{ vars.CLEANUP_INTERVAL_SECONDS || '30' }}
+          TABLEAU_URL: ${{ vars.TABLEAU_URL }}
+          FRONT_PORT: ${{ vars.FRONT_PORT }}
+          MESSAGE_TTL_SECONDS: ${{ vars.MESSAGE_TTL_SECONDS }}
+          CLEANUP_INTERVAL_SECONDS: ${{ vars.CLEANUP_INTERVAL_SECONDS }}
         run: |
           set -euo pipefail
+          : "${REGISTRY:?REGISTRY is required}"
+          : "${DB_PASSWORD:?DB_PASSWORD is required}"
+
+          GROUPE_SLUG="${GROUPE_SLUG:-make-thivananh}"
+          GROUPE_DISPLAY="${GROUPE_DISPLAY:-Make-ThiVanAnh}"
+          COULEUR="${COULEUR:-#0071BC}"
+          TABLEAU_URL="${TABLEAU_URL:-}"
+          FRONT_PORT="${FRONT_PORT:-8080}"
+          MESSAGE_TTL_SECONDS="${MESSAGE_TTL_SECONDS:-3600}"
+          CLEANUP_INTERVAL_SECONDS="${CLEANUP_INTERVAL_SECONDS:-30}"
+          TAG="${TAG:?TAG is required}"
+
           pg_password="${POSTGRES_PASSWORD:-$DB_PASSWORD}"
           {
             echo "REGISTRY=$REGISTRY"
