@@ -1,9 +1,9 @@
+const fs = require('fs');
 const os = require('os');
 
 const state = {
   totalHandled: 0,
   pendingHandled: 0,
-  timer: null,
 };
 
 function recordHandled(count = 1) {
@@ -22,6 +22,14 @@ async function handleIncomingHits(internalBaseUrl, hitsToHandle) {
   }
 }
 
+function readFlag(flagPath) {
+  try {
+    return fs.readFileSync(flagPath, 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
 async function sendPulse(config) {
   const declared = state.pendingHandled;
   let nextDelayMs = 5000;
@@ -35,26 +43,28 @@ async function sendPulse(config) {
         couleur: config.color,
         service: config.service,
         pod: os.hostname(),
+        conteneur: os.hostname(),
         version: config.version,
+        pavillon: readFlag(config.flagPath),
         encaisses: declared,
         total_encaisse: state.totalHandled,
       }),
     });
 
+    // Remove reported hits only after the tableau successfully received them.
     if (response.ok) {
       state.pendingHandled -= declared;
-    }
-
-    const order = await response.json().catch(() => ({}));
-    nextDelayMs = Number(order.prochain_pouls_ms) || 5000;
-    if ((Number(order.coups_a_encaisser) || 0) > 0) {
-      await handleIncomingHits(config.internalBaseUrl, order.coups_a_encaisser);
+      const order = await response.json().catch(() => ({}));
+      nextDelayMs = Number(order.prochain_pouls_ms || order.prochain_pulse_ms) || 5000;
+      if ((Number(order.coups_a_encaisser) || 0) > 0) {
+        await handleIncomingHits(config.internalBaseUrl, order.coups_a_encaisser);
+      }
     }
   } catch (error) {
     console.error(`[pulse] tableau unreachable: ${error.message}`);
   }
 
-  state.timer = setTimeout(() => {
+  setTimeout(() => {
     sendPulse(config);
   }, nextDelayMs);
 }
@@ -66,6 +76,7 @@ function startPulseFromEnv() {
   const color = process.env.COULEUR || '#888888';
   const version = process.env.VERSION || 'dev';
   const internalBaseUrl = process.env.URL_INTERNE || 'http://localhost:3000';
+  const flagPath = process.env.PAVILLON_FICHIER || '/data/pavillon.txt';
 
   if (!tableauUrl || !group || !service) {
     console.log('[pulse] disabled: set TABLEAU_URL, GROUPE and SERVICE to enable.');
@@ -73,7 +84,15 @@ function startPulseFromEnv() {
   }
 
   console.log(`[pulse] ${group}/${service} -> ${tableauUrl}`);
-  sendPulse({ tableauUrl, group, service, color, version, internalBaseUrl });
+  sendPulse({
+    tableauUrl,
+    group,
+    service,
+    color,
+    version,
+    internalBaseUrl,
+    flagPath,
+  });
 }
 
 module.exports = {
