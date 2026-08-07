@@ -27,4 +27,4 @@ ssh -i "$VM_SSH_KEY_FILE" -p "$VM_PORT" -o BatchMode=yes \
   "$VM_USER@$VM_HOST" \
   'echo "CONNECTED_HOST=$(hostname)"; docker --version; docker ps --format "table {{.Names}}\t{{.Status}}" | head -n 15'
 
-echo "VM check passed. You can now run GitHub workflow vm-ssh-smoke."
+echo "VM check passed. You can now run GitHub workflow deploy (workflow_dispatch)."
