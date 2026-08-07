@@ -406,3 +406,39 @@ Notes importantes:
 - Le pavillon est persiste dans le PVC `pavillon-data`, monte sur `/data` pour `api`, `front`, `worker`.
 - L'Ingress expose `front` sur l'hote `bataille-navire.local` (adapter selon votre ingress controller).
 
+## Phase 14 - Mise a jour pendant le feu
+
+Le but de cette phase est simple: changer de version pendant que la charge continue, sans extinction visible.
+
+Contexte de tir:
+- Flotte deja portee sur Kubernetes (phase 13).
+- Rolling update actif sur les deployments (`maxSurge`/`maxUnavailable` + probes readiness/liveness).
+
+Ce qu'on a lance (local k3d, 2026-08-07):
+- 420 requetes `GET /health` vers l'ingress `bataille-navire.local`, cadence ~80 ms.
+- A la 40e requete, injection d'une nouvelle version (`VERSION=phase14-pass-1786133213`) sur `api`, `front`, `worker`.
+- Suivi des 3 rollouts avec `kubectl -n flotte rollout status`.
+
+Ce qui est sorti:
+- Requetes totales: 420
+- Requetes en erreur (HTTP != 200): 0
+- Rollout `api`, `front`, `worker`: `successfully rolled out`
+- Duree du rollout: 39s
+- Fenetre complete de test: 42s
+
+Incident reel avant le run final:
+- Premier essai en echec (timeout) avec `api` en `CrashLoopBackOff`.
+- Cause: `DB_PASSWORD` manquant dans le secret runtime.
+- Correction: recreation de `flotte-secrets`, puis relance complete du test.
+
+Dernier releve du carnet (mesure locale):
+
+| La facon de livrer | Carres eteints pendant la livraison | Coups perdus | Duree totale |
+| :---- | :---- | :---- | :---- |
+| docker compose up -d sur la machine cible | 0 extinction complete observee, mais micro-coupures pendant recreation | 3/420 | 59s (recreation), 63s (fenetre test) |
+| Rolling update sur le cluster | 0 observe sur la sonde health | 0/420 | 38s (rollout), 42s (fenetre test) |
+
+Question cle:
+- Combien de coups une livraison coute-t-elle vraiment ?
+- L'ecart entre les deux lignes (compose vs rolling update) est le resume de la phase.
+
