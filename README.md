@@ -165,3 +165,43 @@ Risque accepte temporairement:
 Plan de retour Phase 6:
 - Revenir juste apres Phase 8 pour brancher health profond DB et test associe.
 
+## Phase 8 - Plus d'exemplaires et carnet de flotte
+
+### Objectif
+- Mesurer avant/apres la duplication (`api=1` puis `api=3`) et consigner les chiffres dans le carnet.
+
+### Script de mesure
+- Script ajoute: `scripts/phase8_measure.sh`
+- Ce script:
+	- lance la stack compose prod,
+	- mesure un throughput local sur `/travail` avec `api=1` puis `api=3`,
+	- estime le temps de convergence local,
+	- affiche la taille des images,
+	- imprime des lignes pre-remplies pour le carnet.
+
+### Execution
+```bash
+chmod +x scripts/phase8_measure.sh
+./scripts/phase8_measure.sh
+```
+
+Options utiles:
+```bash
+REQUESTS=500 CONCURRENCY=40 FRONT_PORT=8080 ./scripts/phase8_measure.sh
+```
+
+### Carnet de flotte (a remplir)
+| Ce qu'on mesure | Avant | Apres | Ce qui a change entre les deux |
+| :---- | :---- | :---- | :---- |
+| Taille de chaque image | api: 57.2 MB, front: 55.1 MB, worker: 55.1 MB | idem (images identiques pendant la mesure) | Mesure locale via `docker image inspect` |
+| Duree entre le push et le dernier carre a jour | - | 3s (convergence locale compose) | Approximation locale mesuree par `scripts/phase8_measure.sh` |
+| Coups encaisses par pouls, avec un exemplaire | 230 rps (proxy) | - | REQUESTS=3000, CONCURRENCY=40 |
+| Coups encaisses par pouls, avec trois exemplaires | - | 230 rps (proxy) | scale api=3 (limitation probable cote front/worker/local) |
+| Nombre de coups avant que le carre ne palisse | <= 50 coups (observation visuelle) | <= 50 coups (observation visuelle) | Mesure manuelle sur tableau (service `api`, salve unique) |
+| Temps de retour a un carre plein apres une salve de mille coups | 5s | 4s | Mesure manuelle sur tableau apres salve 1000 (`SERVICE=api`, `NOMBRE=1000`, `SALVES=1`) |
+
+### Verification terrain Phase 8
+1. Lancer d'abord la mesure locale avec `scripts/phase8_measure.sh`.
+2. Envoyer des salves tableau en `api=1`, noter le point de bascule pale.
+3. Passer en `api=3` (`docker compose -f compose.prod.yml --env-file .env up -d --scale api=3`) et refaire la meme salve.
+4. Noter les deltas dans le carnet (avant/apres) et garder aussi les chiffres decevants.
