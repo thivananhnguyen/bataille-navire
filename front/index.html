@@ -330,9 +330,14 @@
                 const response = await fetch("/api/messages");
 
                 if (!response.ok) {
-
-                    throw new Error();
-
+                    const body = await response.json().catch(() => ({}));
+                    const errorMessage = body.error || 'Le backend est indisponible.';
+                    messagesEl.innerHTML = `
+<div class="empty">
+${errorMessage}
+</div>
+`;
+                    throw new Error(errorMessage);
                 }
 
                 const messages = await response.json();
@@ -391,9 +396,15 @@ ${remaining}s restantes
 
                 });
 
-            } catch {
+            } catch (error) {
 
-                statusEl.textContent = "❌ Impossible de charger les messages.";
+                const message = error instanceof Error ? error.message : 'Impossible de charger les messages.';
+                statusEl.textContent = `❌ Backend indisponible : ${message}`;
+                messagesEl.innerHTML = `
+<div class="empty">
+🔴 Le service n'est pas disponible actuellement.
+</div>
+`;
 
             }
 

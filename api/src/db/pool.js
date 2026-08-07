@@ -9,6 +9,9 @@ const pool = new Pool({
   user: env.dbUser,
   password: env.dbPassword,
   database: env.dbName,
+  connectionTimeoutMillis: 2000,
+  idleTimeoutMillis: 30000,
+  max: 10,
 });
 
 pool.on('error', (error) => {
